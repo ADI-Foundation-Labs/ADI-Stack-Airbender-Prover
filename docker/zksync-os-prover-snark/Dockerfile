@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.9.1-cudnn-devel-ubuntu24.04 AS chef
+FROM nvidia/cuda:13.0.1-cudnn-devel-ubuntu24.04 AS chef
 
 COPY rust-toolchain.toml rust-toolchain.toml
 
@@ -52,7 +52,7 @@ RUN BELLMAN_CUDA_DIR=$PWD/bellman-cuda cargo build -p zksync_os_snark_prover --r
 
 ###############
 
-FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
+FROM nvidia/cuda:13.0.1-runtime-ubuntu22.04
 
 COPY docker/zksync-os-prover-snark/entrypoint.sh /entrypoint.sh
 
