@@ -20,11 +20,11 @@ categories = ["cryptography"]
 
 [workspace.dependencies]
 # zksync-airbender dependencies
-zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git", tag = "v0.5.0-a" }
-zksync_airbender_cli = { package = "cli", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git", tag = "v0.5.0-a" }
+zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git", tag = "v0.5.0-b" }
+zksync_airbender_cli = { package = "cli", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git", tag = "v0.5.0-b" }
 
 # zkos-wrapper dependencies
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git", tag = "v0.5.2-a" }
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git", tag = "v0.5.2-b" }
 
 # zksync-crypto-gpu dependencies
 proof-compression = "=0.155.2"
