@@ -2335,7 +2335,7 @@ checksum = "b8ec7ab813848ba4522158d5517a6093db1ded27575b070f4177b8d12b41db5e"
 dependencies = [
  "flate2",
  "memchr",
- "ruzstd 0.6.0",
+ "ruzstd",
 ]
 
 [[package]]
@@ -2344,7 +2344,6 @@ version = "0.37.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff76201f031d8863c38aa7f905eca4f53abbfa15f609db4277d44cd8938f33fe"
 dependencies = [
- "flate2",
  "memchr",
  "ruzstd 0.8.1",
 ]
@@ -2764,6 +2763,10 @@ dependencies = [
  "shivini",
  "zksync-gpu-prover",
 ]
+
+[[package]]
+name = "protocol_version"
+version = "0.5.1"
 
 [[package]]
 name = "prover"
@@ -4968,7 +4971,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_os_fri_prover"
-version = "0.4.8"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4976,6 +4979,7 @@ dependencies = [
  "clap",
  "cli",
  "execution_utils",
+ "protocol_version",
  "reqwest",
  "serde",
  "serde_json",
@@ -4989,7 +4993,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_os_prover_service"
-version = "0.4.8"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4997,6 +5001,7 @@ dependencies = [
  "clap",
  "cli",
  "execution_utils",
+ "protocol_version",
  "serde",
  "serde_json",
  "tokio",
@@ -5010,13 +5015,15 @@ dependencies = [
 
 [[package]]
 name = "zksync_os_snark_prover"
-version = "0.4.8"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "clap",
  "cli",
  "execution_utils",
  "proof-compression",
+ "protocol_version",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -5043,7 +5050,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_sequencer_proof_client"
-version = "0.4.8"
+version = "0.5.1"
 dependencies = [
  "anyhow",
  "async-trait",

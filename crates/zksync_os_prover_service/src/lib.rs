@@ -1,9 +1,13 @@
+// TODO!: This code base should be moved in a single binary.
+// SNARK & FRI should be libs only and expose no binaries themselves.
+// We'll need slightly more "involved" CLI args, but nothing too complex.
 use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
 
 use clap::Parser;
+use protocol_version::SupportedProtocolVersions;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 #[cfg(feature = "gpu")]
 use zkos_wrapper::gpu::snark::gpu_create_snark_setup_data;
@@ -35,7 +39,7 @@ pub struct Args {
     /// Path to `app.bin`
     #[arg(long)]
     pub app_bin_path: Option<PathBuf>,
-    /// Circuit limit - max number of MainVM circuits to instantiate to run the block fully
+    /// Circuit limit - max number of MainVM circuits to instantiate to run the batch fully
     #[arg(long, default_value = "10000")]
     pub circuit_limit: usize,
     /// Directory to store the output files for SNARK prover
@@ -50,6 +54,9 @@ pub struct Args {
     /// Path to the output file for FRI proofs
     #[arg(short, long)]
     pub fri_path: Option<PathBuf>,
+    /// Disable ZK for SNARK proofs
+    #[arg(long, default_value_t = false)]
+    pub disable_zk: bool,
 }
 
 pub fn init_tracing() {
@@ -70,6 +77,9 @@ pub async fn run(args: Args) {
         .unwrap_or_else(|| Path::new(&manifest_path).join("../../multiblock_batch.bin"));
     let binary = load_binary_from_path(&binary_path.to_str().unwrap().to_string());
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
+
+    let supported_versions = SupportedProtocolVersions::default();
+    tracing::info!("{:#?}", supported_versions);
 
     #[cfg(feature = "gpu")]
     let precomputations = {
@@ -110,6 +120,7 @@ pub async fn run(args: Args) {
                 args.circuit_limit,
                 &mut gpu_state,
                 args.fri_path.clone(),
+                &supported_versions,
             )
             .await
             .expect("Failed to run FRI prover");
@@ -142,6 +153,8 @@ pub async fn run(args: Args) {
                 args.trusted_setup_file.clone(),
                 #[cfg(feature = "gpu")]
                 &precomputations,
+                args.disable_zk,
+                &supported_versions,
             )
             .await
             .expect("Failed to run SNARK prover");

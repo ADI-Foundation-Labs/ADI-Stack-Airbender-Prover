@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use tracing_subscriber::{fmt, EnvFilter};
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_sequencer_proof_client::{
-    sequencer_proof_client::SequencerProofClient, L2BlockNumber, ProofClient,
+    sequencer_proof_client::SequencerProofClient, FriJobInputs, L2BatchNumber, ProofClient,
 };
 
 #[derive(Parser)]
@@ -56,11 +56,14 @@ enum Commands {
         #[arg(short, long, value_name = "FRI_PATH", default_value = "./fri_job.json")]
         path: String,
     },
-    /// Submits block's FRI proof to sequencer
+    /// Submits batch's FRI proof to sequencer
     SubmitFri {
-        /// The block number to submit the FRI proof for
-        #[arg(short, long, value_name = "BLOCK_NUMBER")]
-        block_number: u32,
+        /// The batch number to submit the FRI proof for
+        #[arg(short, long, value_name = "BATCH_NUMBER")]
+        batch_number: u32,
+        /// VK hash of the proof chain to be submitted
+        #[arg(short, long, value_name = "VK_HASH")]
+        vk_hash: String,
         /// Path to the FRI proof file to submit
         #[arg(
             short,
@@ -81,14 +84,17 @@ enum Commands {
         )]
         path: String,
     },
-    /// Submits block's SNARK proof to sequencer
+    /// Submits batch's SNARK proof to sequencer
     SubmitSnark {
-        /// The SNARK aggregates proofs starting from this block number
-        #[arg(short, long, value_name = "FROM_BLOCK")]
-        from_block_number: u32,
-        /// The SNARK aggregates proofs up to this block number (inclusive)
-        #[arg(short, long, value_name = "TO_BLOCK")]
-        to_block_number: u32,
+        /// The SNARK aggregates proofs starting from this batch number
+        #[arg(short, long, value_name = "FROM_BATCH")]
+        from_batch_number: u32,
+        /// The SNARK aggregates proofs up to this batch number (inclusive)
+        #[arg(short, long, value_name = "TO_BATCH")]
+        to_batch_number: u32,
+        /// VK hash of the proof chain to be submitted
+        #[arg(short, long, value_name = "VK_HASH")]
+        vk_hash: String,
         /// Path to the SNARK proof file to submit
         #[arg(
             short,
@@ -124,25 +130,35 @@ async fn main() -> Result<()> {
         Commands::PickFri { path } => {
             tracing::info!("Picking next FRI proof job from sequencer at {}", url);
             match client.pick_fri_job().await? {
-                Some((block_number, data)) => {
+                Some(FriJobInputs {
+                    batch_number,
+                    vk_hash,
+                    prover_input,
+                }) => {
                     tracing::info!(
-                        "Picked FRI job for block {block_number}, saved job to path {path}"
+                        "Picked FRI job for batch {batch_number} with vk {vk_hash}, saved job to path {path}"
                     );
                     let mut dst = std::fs::File::create(path).unwrap();
-                    serde_json::to_writer_pretty(&mut dst, &data).unwrap();
+                    serde_json::to_writer_pretty(&mut dst, &prover_input).unwrap();
                 }
                 None => {
                     tracing::info!("No FRI proof jobs available at the moment.");
                 }
             }
         }
-        Commands::SubmitFri { block_number, path } => {
-            tracing::info!("Submitting FRI proof for block {block_number} with proof from {path} to sequencer at {}", url);
+        Commands::SubmitFri {
+            batch_number,
+            vk_hash,
+            path,
+        } => {
+            tracing::info!("Submitting FRI proof for batch {batch_number} with proof from {path} to sequencer at {}", url);
             let file = std::fs::File::open(path)?;
             let fri_proof: String = serde_json::from_reader(file)?;
-            client.submit_fri_proof(block_number, fri_proof).await?;
+            client
+                .submit_fri_proof(batch_number, vk_hash, fri_proof)
+                .await?;
             tracing::info!(
-                "Submitted FRI proof for block {block_number} to sequencer at {}",
+                "Submitted FRI proof for batch {batch_number} to sequencer at {}",
                 url
             );
         }
@@ -151,16 +167,17 @@ async fn main() -> Result<()> {
             match client.pick_snark_job().await? {
                 Some(snark_proof_inputs) => {
                     tracing::info!(
-                        "Received SNARK job for blocks [{}, {}], saving to disk...",
-                        snark_proof_inputs.from_block_number,
-                        snark_proof_inputs.to_block_number
+                        "Received SNARK job for batchess [{}, {}], saving to disk...",
+                        snark_proof_inputs.from_batch_number,
+                        snark_proof_inputs.to_batch_number
                     );
                     let mut dst = std::fs::File::create(&path).unwrap();
                     serde_json::to_writer_pretty(&mut dst, &snark_proof_inputs).unwrap();
                     tracing::info!(
-                        "Saved SNARK job for blocks [{}, {}] to path {path}",
-                        snark_proof_inputs.from_block_number,
-                        snark_proof_inputs.to_block_number
+                        "Saved SNARK job for batches [{}, {}] with vk {} to path {path}",
+                        snark_proof_inputs.from_batch_number,
+                        snark_proof_inputs.to_batch_number,
+                        snark_proof_inputs.vk_hash
                     );
                 }
                 None => {
@@ -169,21 +186,23 @@ async fn main() -> Result<()> {
             }
         }
         Commands::SubmitSnark {
-            from_block_number,
-            to_block_number,
+            from_batch_number,
+            to_batch_number,
+            vk_hash,
             path,
         } => {
-            tracing::info!("Submitting SNARK proof for blocks [{from_block_number}, {to_block_number}] with proof from {path} to sequencer at {}", url);
+            tracing::info!("Submitting SNARK proof for batches [{from_batch_number}, {to_batch_number}] with proof from {path} to sequencer at {}", url);
             let file = std::fs::File::open(path)?;
             let snark_wrapper: SnarkWrapperProof = serde_json::from_reader(file)?;
             client
                 .submit_snark_proof(
-                    L2BlockNumber(from_block_number),
-                    L2BlockNumber(to_block_number),
+                    L2BatchNumber(from_batch_number),
+                    L2BatchNumber(to_batch_number),
+                    vk_hash,
                     snark_wrapper,
                 )
                 .await?;
-            tracing::info!("Submitted proof for blocks [{from_block_number}, {to_block_number}] to sequencer at {}", url);
+            tracing::info!("Submitted proof for batches [{from_batch_number}, {to_batch_number}] to sequencer at {}", url);
         }
     }
 

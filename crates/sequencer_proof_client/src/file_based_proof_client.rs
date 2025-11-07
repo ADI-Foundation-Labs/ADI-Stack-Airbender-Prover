@@ -46,7 +46,7 @@ impl FileBasedProofClient {
         Ok(String::new())
     }
 
-    pub fn serialize_fri_job(&self, block_number: u32, prover_input: &[u8]) -> anyhow::Result<()> {
+    pub fn serialize_fri_job(&self, batch_number: u32, prover_input: &[u8]) -> anyhow::Result<()> {
         let path = self.base_dir.join(FRI_JOB_FILE);
         let mut file =
             std::fs::File::create(path).context(format!("Failed to create {FRI_JOB_FILE}"))?;

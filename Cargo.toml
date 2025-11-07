@@ -4,13 +4,14 @@ members = [
     "crates/zksync_os_fri_prover",
     "crates/zksync_os_snark_prover",
     "crates/zksync_os_prover_service",
+    "crates/protocol_version",
 ]
 resolver = "2"
 
 [workspace.package]
 edition = "2021"
 #rust-version = "1.88"
-version = "0.4.8"
+version = "0.5.1"
 authors = ["The Matter Labs Team <hello@matterlabs.dev>"]
 homepage = "https://zksync.io/"
 repository = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-Prover/"
@@ -19,12 +20,16 @@ keywords = ["blockchain", "zksync", "zk", "risc-v"]
 categories = ["cryptography"]
 
 [workspace.dependencies]
+# internal dependencies
+zksync_sequencer_proof_client = { path = "crates/sequencer_proof_client" }
+protocol_version = { path = "crates/protocol_version" }
+
 # zksync-airbender dependencies
-zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git", tag = "v0.5.0-b" }
-zksync_airbender_cli = { package = "cli", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git", tag = "v0.5.0-b" }
+zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git", tag = "v0.5.1-b" }
+zksync_airbender_cli = { package = "cli", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git", tag = "v0.5.1-b" }
 
 # zkos-wrapper dependencies
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git", tag = "v0.5.2-b" }
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git", tag = "v0.5.3-b" }
 
 # zksync-crypto-gpu dependencies
 proof-compression = "=0.155.2"
