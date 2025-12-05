@@ -1,6 +1,8 @@
-# ZKsync OS: Airbender Prover
+# ADI Stack OS: Airbender Prover
 
-This repo contains the Prover Service implementation for ZKsync OS Airbender prover.
+This repo contains the Prover Service implementation for ADI Stack OS Airbender prover.
+
+ADI Stack utilizing the [MatterLabs zkOS stack](https://github.com/matter-labs/zksync-airbender-prover)
 
 ## Overview
 
@@ -17,16 +19,16 @@ Small HTTP wrapper around the Sequencer Prover API.
 Apart from providing lib to use in provers, it also has a binary that acts as a CLI.
 Useful for troubleshooting (i.e. manually pushing a SNARK proof to sequencer, instead of running the entire sequencer).
 
-### ZKsync OS FRI Prover
+### ADI Stack OS FRI Prover
 
 The FRI prover for ZKsync OS. Retrieves proof input, proves a batch (which is a set of blocks) and submits it back to sequencer.
 There's no state persisted in between.
 
-### ZKsync OS SNARK Prover
+### ADI Stack OS SNARK Prover
 
 SNARKs the final proof. Gets a set of continuous FRIs from sequencer, merges them into a single FRI, creates a FINAL proof out of it and then SNARKs it.
 
-### ZKsync OS Prover Service
+### ADI Stack OS Prover Service
 
 The ZKsync OS Prover Service is made for running both FRI and SNARK provers on the same machine. You can configure `max_snark_latency` and `max_fris_per_snark` parameters.
 
@@ -114,7 +116,7 @@ Bellman Cuda (see instructions below).
 ## Installing bellman-cuda
 
 ```shell
-git clone https://github.com/matter-labs/era-bellman-cuda.git --branch main bellman-cuda && \
+git clone https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Bellman-CUDA --branch main bellman-cuda && \
 cmake -Bbellman-cuda/build -Sbellman-cuda/ -DCMAKE_BUILD_TYPE=Release && \
 cmake --build bellman-cuda/build/
 ```
@@ -127,7 +129,6 @@ export BELLMAN_CUDA_DIR=...
 
 ## Policies
 
-- [Security policy](SECURITY.md)
 - [Contribution policy](CONTRIBUTING.md)
 
 ## License
@@ -141,11 +142,10 @@ at your option.
 
 ## Official Links
 
-- [Website](https://zksync.io/)
-- [GitHub](https://github.com/matter-labs)
-- [ZK Credo](https://github.com/zksync/credo)
-- [Twitter](https://twitter.com/zksync)
-- [Twitter for Developers](https://twitter.com/zkSyncDevs)
-- [Discord](https://join.zksync.dev/)
-- [Mirror](https://zksync.mirror.xyz/)
-- [Youtube](https://www.youtube.com/@zksync-io)
+- [Website](https://adi.foundation)
+- [Docs](https://docs.adi.foundation/)
+- [Github](https://github.com/ADI-Foundation-Labs/)
+- [X](https://x.com/adi_foundation)
+- [X for ADI Chain announcements](https://x.com/ADIChain_)
+- [LinkedIn](https://www.linkedin.com/company/adifoundation/)
+- [Discord](http://discord.gg/adi-foundation)
