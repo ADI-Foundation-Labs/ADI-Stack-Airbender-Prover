@@ -1,5 +1,0 @@
-* @matter-labs/prover-subsystem
-.github/release-please/** @matter-labs/core-release-managers
-**/CHANGELOG.md @matter-labs/core-release-managers
-CODEOWNERS @RomanBrodetski @EmilLuta @popzxc @mm-zk
-.github/workflows/** @matter-labs/devops

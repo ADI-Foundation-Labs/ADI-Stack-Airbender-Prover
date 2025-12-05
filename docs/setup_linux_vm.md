@@ -54,7 +54,7 @@ source ~/.bashrc
 
 ```bash
 # needed for SNARKing
-git clone https://github.com/matter-labs/era-bellman-cuda.git
+git clone https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Bellman-CUDA.git
 cmake -Bera-bellman-cuda/build -Sera-bellman-cuda/ -DCMAKE_BUILD_TYPE=Release
 cmake --build era-bellman-cuda/build/
 # and the following in your ~/.bashrc
@@ -67,8 +67,8 @@ source ~/.bashrc
 ### 6. Clone repos
 
 ```bash
-git clone https://github.com/matter-labs/zksync-os-server.git # sequencer
-git clone https://github.com/matter-labs/zksync-airbender-prover.git # prover
+git clone https://github.com/ADI-Foundation-Labs/ADI-Stack-Server.git # sequencer
+git clone https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-Prover.git # prover
 ```
 
 ### 7. Download CRS file
@@ -120,7 +120,7 @@ ulimit -s 300000
 RUST_BACKTRACE=full RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_snark_prover -- run-prover --sequencer-url http://localhost:3124 --binary-path ./multiblock_batch.bin --trusted-setup-file crs/setup_compact.key --output-dir ./outputs
 ```
 
-> NOTE: Even if you have enough VRAM to run both processes, by default, the provers will simply consume all the VRAM available. You can either run SNARK or FRI at any one given time. There's also the intermitent (that runs some FRIs, then a SNARK, etc.), you can read more in the main [README](https://github.com/matter-labs/zksync-airbender-prover), under [Usage section](https://github.com/matter-labs/zksync-airbender-prover?tab=readme-ov-file#usage). Look for `ZKsync OS Prover Service`.
+> NOTE: Even if you have enough VRAM to run both processes, by default, the provers will simply consume all the VRAM available. You can either run SNARK or FRI at any one given time. There's also the intermitent (that runs some FRIs, then a SNARK, etc.), you can read more in the main [README](https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-Prover), under [Usage section](https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-Prover?tab=readme-ov-file#usage). Look for `ZKsync OS Prover Service`.
 
 ## Typical workflow
 
@@ -137,5 +137,5 @@ If you want to troubleshoot at any layer, the above workflow allows you to go th
 If you navigate to `scripts/` in the root of this repo, there's `scripts/ubuntu_setup.sh`. It already does all the setup up to point 7 (inclusive). You can get a machine and start everything with:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/matter-labs/zksync-airbender-prover/main/scripts/ubuntu_setup.sh | bash
+curl -sL https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-Prover/main/scripts/ubuntu_setup.sh | bash
 ```
