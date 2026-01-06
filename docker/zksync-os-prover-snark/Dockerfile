@@ -10,7 +10,7 @@ ARG SCCACHE_GCS_SERVICE_ACCOUNT
 ARG SCCACHE_GCS_RW_MODE
 ARG RUSTC_WRAPPER
 
-ARG CUDA_ARCH=89
+ARG CUDA_ARCH=89;100
 ENV CUDAARCHS=${CUDA_ARCH}
 
 RUN apt-get update && apt-get install -y curl clang openssl libssl-dev gcc g++ git \

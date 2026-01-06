@@ -3,9 +3,11 @@ use std::time::Duration;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
+use url::Url;
 use zksync_os_snark_prover::{
     generate_verification_key, init_tracing, metrics, run_linking_fri_snark,
 };
+use zksync_sequencer_proof_client::{MultiSequencerProofClient, ProofClient, SequencerProofClient};
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
 pub struct SetupOptions {
@@ -39,8 +41,10 @@ enum Commands {
     },
 
     RunProver {
-        #[arg(short, long)]
-        sequencer_url: Option<String>,
+        /// List of sequencer URLs to poll for tasks (e.g., "http://<IP>:<PORT>")
+        /// The prover will poll sequencers in round-robin fashion
+        #[arg(short, long, alias = "sequencer-url", value_delimiter = ',', default_value = "http://localhost:3124", value_parser = clap::value_parser!(Url))]
+        sequencer_urls: Vec<Url>,
         #[clap(flatten)]
         setup: SetupOptions,
         /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely
@@ -55,6 +59,9 @@ enum Commands {
         /// Disable ZK for SNARK proofs
         #[arg(long, default_value_t = false)]
         disable_zk: bool,
+        /// Name of the prover for identification in the sequencer
+        #[arg(long, default_value = "unknown_prover")]
+        prover_name: String,
     },
 }
 
@@ -78,7 +85,7 @@ fn main() {
             vk_verification_key_file,
         ),
         Commands::RunProver {
-            sequencer_url,
+            sequencer_urls,
             setup:
                 SetupOptions {
                     binary_path,
@@ -89,6 +96,7 @@ fn main() {
             prometheus_port,
             request_timeout_secs,
             disable_zk,
+            prover_name,
         } => {
             // TODO: edit this comment
             // we need a bigger stack, due to crypto code exhausting default stack size, 40 MBs picked here
@@ -107,14 +115,25 @@ fn main() {
                     metrics::start_metrics_exporter(prometheus_port, stop_receiver).await
                 });
 
+                let timeout = Duration::from_secs(request_timeout_secs);
+
+                let clients: Vec<Box<dyn ProofClient + Send + Sync>> =
+                    SequencerProofClient::new_clients(sequencer_urls, prover_name, Some(timeout))
+                        .expect("failed to create sequencer proof clients");
+                let multi_client = MultiSequencerProofClient::new(clients)
+                    .expect("failed to create multi sequencer proof client");
+                tracing::info!(
+                    "Starting zksync_os_snark_prover with request timeout of {}s",
+                    request_timeout_secs
+                );
+
                 tokio::select! {
                     result = run_linking_fri_snark(
                         binary_path,
-                        sequencer_url,
+                        &multi_client,
                         output_dir,
                         trusted_setup_file,
                         iterations,
-                        request_timeout_secs,
                         disable_zk,
                     ) => {
                         tracing::info!("SNARK prover finished");

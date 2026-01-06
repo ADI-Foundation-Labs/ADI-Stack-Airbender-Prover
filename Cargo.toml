@@ -11,8 +11,8 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 #rust-version = "1.88"
-version = "0.5.1"
-authors = ["ADI Foundation"]
+version = "0.6.1"
+authors = ["ADI Foundation", "The Matter Labs Team <hello@matterlabs.dev>"]
 homepage = "https://adi.foundation/"
 repository = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-Prover/"
 license = "MIT OR Apache-2.0"
@@ -55,6 +55,7 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 async-trait = "0.1"
 vise = "0.3.2"
 vise-exporter = "0.3.2"
+url = "2.5"
 
 # Things below are to guarantee that we can compile in reasonable time.
 # Once we do some optimizations to the zkos-wrapper and compression verifier, we'll be able to remove some of them.

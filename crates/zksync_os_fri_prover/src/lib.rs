@@ -1,20 +1,22 @@
 use std::{
     path::{Path, PathBuf},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
+use anyhow::Context as _;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use clap::Parser;
 use protocol_version::SupportedProtocolVersions;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use url::Url;
 use zksync_airbender_cli::prover_utils::{
     create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
     GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
 use zksync_sequencer_proof_client::{
-    sequencer_proof_client::SequencerProofClient, FriJobInputs, ProofClient,
+    FriJobInputs, MultiSequencerProofClient, ProofClient, SequencerProofClient,
 };
 
 use crate::metrics::FRI_PROVER_METRICS;
@@ -27,9 +29,17 @@ pub mod metrics;
 #[command(version = "1.0")]
 #[command(about = "Prover for Zksync OS", long_about = None)]
 pub struct Args {
-    /// Base URL for the proof-data server (e.g., "http://<IP>:<PORT>")
-    #[arg(short, long, default_value = "http://localhost:3124")]
-    pub base_url: String,
+    /// List of sequencer URLs to poll for tasks (e.g., "http://<IP>:<PORT>")
+    /// The prover will poll sequencers in round-robin fashion
+    #[arg(
+        short,
+        long,
+        alias = "base-url",
+        value_delimiter = ',',
+        default_value = "http://localhost:3124",
+        value_parser = clap::value_parser!(Url)
+    )]
+    pub sequencer_urls: Vec<Url>,
     /// Enable logging and use the logging-enabled binary
     /// This is not used in the FRI prover, but is kept for backward compatibility.
     #[arg(long)]
@@ -54,6 +64,10 @@ pub struct Args {
     /// Timeout for HTTP requests to sequencer in seconds. If no response is received within this time, the prover will exit.
     #[arg(long, default_value = "2")]
     pub request_timeout_secs: u64,
+
+    /// Name of the prover for identification in the sequencer's prover api
+    #[arg(long, default_value = "unknown_prover")]
+    pub prover_name: String,
 }
 
 pub fn init_tracing() {
@@ -96,11 +110,16 @@ pub fn create_proof(
     ProgramProof::from_proof_list_and_metadata(&recursion_proof_list, &recursion_proof_metadata)
 }
 
-pub async fn run(args: Args) {
-    use std::time::Duration;
-
+pub async fn run(args: Args) -> anyhow::Result<()> {
     let timeout = Duration::from_secs(args.request_timeout_secs);
-    let client = SequencerProofClient::new_with_timeout(args.base_url, Some(timeout));
+
+    let clients =
+        SequencerProofClient::new_clients(args.sequencer_urls, args.prover_name, Some(timeout))
+            .context("failed to create sequencer proof clients")?;
+
+    let multi_client = MultiSequencerProofClient::new(clients)
+        .context("failed to create multi sequencer proof client")?;
+    tracing::debug!("Using sequencer client {:#?}", multi_client);
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -125,16 +144,17 @@ pub async fn run(args: Args) {
     let mut gpu_state = GpuSharedState::new(&binary);
 
     tracing::info!(
-        "Starting Zksync OS FRI prover for {} with request timeout of {}s",
-        client.sequencer_url(),
+        "Starting Zksync OS FRI prover with request timeout of {}s",
         args.request_timeout_secs
     );
 
     let mut proof_count = 0;
 
     loop {
+        tracing::debug!("Polling sequencer: {}", multi_client.sequencer_url());
+
         let proof_generated = run_inner(
-            &client,
+            &multi_client,
             &binary,
             args.circuit_limit,
             &mut gpu_state,
@@ -146,20 +166,26 @@ pub async fn run(args: Args) {
 
         if proof_generated {
             proof_count += 1;
-        }
 
-        // Check if we've reached the iteration limit
-        if let Some(max_proofs_generated) = args.iterations {
-            if proof_count >= max_proofs_generated {
-                tracing::info!("Reached maximum iterations ({max_proofs_generated}), exiting...",);
-                break;
+            // Check if we've reached the iteration limit
+            if let Some(max_proofs_generated) = args.iterations {
+                if proof_count >= max_proofs_generated {
+                    tracing::info!(
+                        "Reached maximum iterations ({max_proofs_generated}), exiting...",
+                    );
+                    return Ok(());
+                }
             }
+        } else {
+            // If no task was found, wait before trying again
+            tracing::info!("No pending batches to prove from sequencer, retrying in 100ms...");
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
     }
 }
 
-pub async fn run_inner<P: ProofClient>(
-    client: &P,
+pub async fn run_inner(
+    client: &dyn ProofClient,
     binary: &Vec<u32>,
     circuit_limit: usize,
     #[cfg(feature = "gpu")] gpu_state: &mut GpuSharedState,
@@ -179,13 +205,18 @@ pub async fn run_inner<P: ProofClient>(
                 .map(|e| e.is_timeout())
                 .unwrap_or(false)
             {
-                tracing::error!("Timeout waiting for response from sequencer: {err}");
+                tracing::error!(
+                    "Timeout waiting for response from sequencer {}: {err}",
+                    client.sequencer_url()
+                );
                 tracing::error!("Exiting prover due to timeout");
                 FRI_PROVER_METRICS.timeout_errors.inc();
                 return Ok(false);
             }
-            tracing::error!("Error fetching next prover job: {err}");
-            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            tracing::error!(
+                "Error fetching next prover job from sequencer {}: {err}",
+                client.sequencer_url()
+            );
             return Ok(false);
         }
         Ok(Some(fri_job_input)) => {
@@ -202,8 +233,10 @@ pub async fn run_inner<P: ProofClient>(
         }
 
         Ok(None) => {
-            tracing::info!("No pending batches to prove, retrying in 100ms...");
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            tracing::debug!(
+                "No pending batches to prove from sequencer {}",
+                client.sequencer_url()
+            );
             return Ok(false);
         }
     };
@@ -217,9 +250,10 @@ pub async fn run_inner<P: ProofClient>(
         .collect();
 
     tracing::info!(
-        "Starting proving batch number {} with vk hash {}",
+        "Starting proving batch number {} with vk hash {} from sequencer {}",
         batch_number,
-        vk_hash
+        vk_hash,
+        client.sequencer_url()
     );
 
     let proof = create_proof(prover_input, binary, circuit_limit, gpu_state);
@@ -253,9 +287,10 @@ pub async fn run_inner<P: ProofClient>(
         .await
     {
         Ok(_) => tracing::info!(
-            "Successfully submitted proof for batch number {} with vk hash {}",
+            "Successfully submitted proof for batch number {} with vk hash {} to sequencer {}",
             batch_number,
-            vk_hash
+            vk_hash,
+            client.sequencer_url()
         ),
         Err(err) => {
             // Check if the error is a timeout error
@@ -265,18 +300,20 @@ pub async fn run_inner<P: ProofClient>(
                 .unwrap_or(false)
             {
                 tracing::error!(
-                    "Timeout submitting proof for batch number {} with vk hash {}: {}",
+                    "Timeout submitting proof for batch number {} with vk hash {} to sequencer {}: {}",
                     batch_number,
                     vk_hash,
+                    client.sequencer_url(),
                     err
                 );
                 tracing::error!("Exiting prover due to timeout");
                 FRI_PROVER_METRICS.timeout_errors.inc();
             }
             tracing::error!(
-                "Failed to submit proof for batch number {} with vk hash {}: {}",
+                "Failed to submit proof for batch number {} with vk hash {} to sequencer {}: {}",
                 batch_number,
                 vk_hash,
+                client.sequencer_url(),
                 err
             );
         }

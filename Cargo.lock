@@ -2766,7 +2766,7 @@ dependencies = [
 
 [[package]]
 name = "protocol_version"
-version = "0.5.1"
+version = "0.6.1"
 
 [[package]]
 name = "prover"
@@ -4971,7 +4971,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_os_fri_prover"
-version = "0.5.1"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4986,6 +4986,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "vise",
  "vise-exporter",
  "zksync_sequencer_proof_client",
@@ -4993,7 +4994,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_os_prover_service"
-version = "0.5.1"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -5002,11 +5003,13 @@ dependencies = [
  "cli",
  "execution_utils",
  "protocol_version",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "zkos-wrapper",
  "zksync_os_fri_prover",
  "zksync_os_snark_prover",
@@ -5015,7 +5018,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_os_snark_prover"
-version = "0.5.1"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -5029,6 +5032,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "vise",
  "vise-exporter",
  "zkos-wrapper",
@@ -5050,7 +5054,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_sequencer_proof_client"
-version = "0.5.1"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5065,6 +5069,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "vise",
  "zkos-wrapper",
  "zksync_bellman",

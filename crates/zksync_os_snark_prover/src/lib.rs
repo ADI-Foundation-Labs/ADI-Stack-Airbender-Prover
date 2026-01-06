@@ -19,9 +19,7 @@ use zksync_airbender_execution_utils::{
     get_padded_binary, Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers,
     UNIVERSAL_CIRCUIT_VERIFIER,
 };
-use zksync_sequencer_proof_client::{
-    sequencer_proof_client::SequencerProofClient, ProofClient, SnarkProofInputs,
-};
+use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
 
 use crate::metrics::SNARK_PROVER_METRICS;
 
@@ -163,28 +161,17 @@ pub fn compute_compression_vk(binary_path: String) -> CompressionVK {
 
 pub async fn run_linking_fri_snark(
     _binary_path: String,
-    sequencer_url: Option<String>,
+    client: &dyn ProofClient,
     output_dir: String,
     trusted_setup_file: String,
     iterations: Option<usize>,
-    request_timeout_secs: u64,
     disable_zk: bool,
 ) -> anyhow::Result<()> {
-    let sequencer_url = sequencer_url.unwrap_or("http://localhost:3124".to_string());
-    let timeout = Duration::from_secs(request_timeout_secs);
-    let sequencer_client =
-        SequencerProofClient::new_with_timeout(sequencer_url.clone(), Some(timeout));
-
     let startup_started_at = Instant::now();
 
     let supported_versions = SupportedProtocolVersions::default();
     tracing::info!("{:#?}", supported_versions);
 
-    tracing::info!(
-        "Starting zksync_os_snark_prover for {} with request timeout of {}s",
-        sequencer_url,
-        request_timeout_secs
-    );
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
 
     #[cfg(feature = "gpu")]
@@ -203,8 +190,10 @@ pub async fn run_linking_fri_snark(
     let mut proof_count = 0;
 
     loop {
+        tracing::debug!("Polling sequencer: {}", client.sequencer_url());
+
         let proof_generated = run_inner(
-            &sequencer_client,
+            client,
             &verifier_binary,
             output_dir.clone(),
             trusted_setup_file.clone(),
@@ -216,19 +205,27 @@ pub async fn run_linking_fri_snark(
         .await
         .expect("Failed to run SNARK prover");
 
-        proof_count += proof_generated as usize;
+        if proof_generated {
+            proof_count += 1;
 
-        if let Some(max_proofs_generated) = iterations {
-            if proof_count >= max_proofs_generated {
-                tracing::info!("Reached maximum iterations ({max_proofs_generated}), exiting...");
-                return Ok(());
+            if let Some(max_proofs_generated) = iterations {
+                if proof_count >= max_proofs_generated {
+                    tracing::info!(
+                        "Reached maximum iterations ({max_proofs_generated}), exiting..."
+                    );
+                    return Ok(());
+                }
             }
+        } else {
+            // If no task was found, wait before trying again
+            tracing::info!("No pending SNARK jobs from sequencer, retrying in 5s...");
+            tokio::time::sleep(Duration::from_secs(5)).await;
         }
     }
 }
 
-pub async fn run_inner<P: ProofClient>(
-    client: &P,
+pub async fn run_inner(
+    client: &dyn ProofClient,
     verifier_binary: &Vec<u32>,
     output_dir: String,
     trusted_setup_file: String,
@@ -240,7 +237,7 @@ pub async fn run_inner<P: ProofClient>(
     supported_protocol_versions: &SupportedProtocolVersions,
 ) -> anyhow::Result<bool> {
     let proof_time = Instant::now();
-    tracing::info!("Started picking job");
+    tracing::debug!("Picking job from sequencer {}", client.sequencer_url());
     let snark_proof_input = match client.pick_snark_job().await {
         Ok(Some(snark_proof_input)) => {
             if snark_proof_input.fri_proofs.is_empty() {
@@ -261,8 +258,10 @@ pub async fn run_inner<P: ProofClient>(
             snark_proof_input
         }
         Ok(None) => {
-            tracing::info!("No SNARK jobs found, retrying in 5s");
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tracing::debug!(
+                "No SNARK jobs found from sequencer {}",
+                client.sequencer_url()
+            );
             return Ok(false);
         }
         Err(e) => {
@@ -271,13 +270,18 @@ pub async fn run_inner<P: ProofClient>(
                 .map(|err| err.is_timeout())
                 .unwrap_or(false)
             {
-                tracing::error!("Timeout waiting for response from sequencer: {e:?}");
+                tracing::error!(
+                    "Timeout waiting for response from sequencer {}: {e:?}",
+                    client.sequencer_url()
+                );
                 tracing::error!("Exiting prover due to timeout");
                 SNARK_PROVER_METRICS.timeout_errors.inc();
                 return Ok(false);
             }
-            tracing::info!("Failed to pick SNARK job due to {e:?}, retrying in 30s");
-            tokio::time::sleep(Duration::from_secs(30)).await;
+            tracing::error!(
+                "Failed to pick SNARK job from sequencer {}: {e:?}",
+                client.sequencer_url()
+            );
             return Ok(false);
         }
     };
@@ -286,7 +290,8 @@ pub async fn run_inner<P: ProofClient>(
     let vk_hash = snark_proof_input.vk_hash.clone();
 
     tracing::info!(
-        "Finished picking job with VK hash {}, will aggregate from {} to {} inclusive",
+        "Finished picking job from sequencer {} with VK hash {}, will aggregate from {} to {} inclusive",
+        client.sequencer_url(),
         vk_hash,
         start_batch,
         end_batch,
@@ -370,10 +375,11 @@ pub async fn run_inner<P: ProofClient>(
     {
         Ok(()) => {
             tracing::info!(
-                "Successfully submitted SNARK proof for batches {} to {} with vk hash {}",
+                "Successfully submitted SNARK proof for batches {} to {} with vk hash {} to sequencer {}",
                 start_batch,
                 end_batch,
                 vk_hash,
+                client.sequencer_url()
             );
 
             SNARK_PROVER_METRICS
@@ -387,19 +393,21 @@ pub async fn run_inner<P: ProofClient>(
                 .unwrap_or(false)
             {
                 tracing::error!(
-                    "Timeout submitting SNARK proof with vk hash {} for batches {} to {}: {e:?}",
+                    "Timeout submitting SNARK proof with vk hash {} for batches {} to {} to sequencer {}: {e:?}",
                     vk_hash,
                     start_batch,
                     end_batch,
+                    client.sequencer_url()
                 );
                 tracing::error!("Exiting prover due to timeout");
                 SNARK_PROVER_METRICS.timeout_errors.inc();
             }
             tracing::error!(
-                "Failed to submit SNARK job with vk hash {}, batches {} to {} due to {e:?}, skipping",
+                "Failed to submit SNARK job with vk hash {}, batches {} to {} to sequencer {} due to {e:?}, skipping",
                 vk_hash,
                 start_batch,
-                end_batch
+                end_batch,
+                client.sequencer_url(),
             );
         }
     };

@@ -32,6 +32,7 @@ tracing-subscriber.workspace = true
 tokio = { workspace = true, features = ["full"] }
 vise.workspace = true
 vise-exporter.workspace = true
+url.workspace = true
 
 [features]
 gpu = ["zksync_airbender_cli/gpu"]

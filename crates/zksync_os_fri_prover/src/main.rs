@@ -18,8 +18,11 @@ pub async fn main() -> anyhow::Result<()> {
     });
 
     tokio::select! {
-        _ = zksync_os_fri_prover::run(args) => {
-            tracing::info!("Zksync OS FRI prover finished");
+        err = zksync_os_fri_prover::run(args) => {
+            match err {
+                Ok(_) => tracing::info!("Zksync OS FRI prover finished successfully"),
+                Err(e) => tracing::error!("Zksync OS FRI prover finished with error: {e}"),
+            }
             stop_sender.send(true).expect("failed to send stop signal");
         }
         _ = tokio::signal::ctrl_c() => {

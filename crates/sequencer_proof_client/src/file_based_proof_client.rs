@@ -94,6 +94,10 @@ impl FileBasedProofClient {
 
 #[async_trait]
 impl ProofClient for FileBasedProofClient {
+    fn sequencer_url(&self) -> &str {
+        "file-based"
+    }
+
     async fn pick_fri_job(&self) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
         let path = self.base_dir.join(FRI_JOB_FILE);
         let file = std::fs::File::open(path).context(format!("Failed to open {FRI_JOB_FILE}"))?;

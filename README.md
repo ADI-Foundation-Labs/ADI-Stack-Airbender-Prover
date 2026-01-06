@@ -47,13 +47,17 @@ Sample usage for commands.
 **This command currently requires a GPU (at least 24GB of VRAM)**
 
 ```bash
-# start FRI prover
-cargo run --release --features gpu --bin zksync_os_fri_prover -- --base-url http://localhost:3124 --app-bin-path ./multiblock_batch.bin --path ./output/fri_proof.json
+# start FRI prover with a single sequencer
+cargo run --release --features gpu --bin zksync_os_fri_prover -- --sequencer-urls http://localhost:3124 --app-bin-path ./multiblock_batch.bin --path ./output/fri_proof.json
+
+# start FRI prover with multiple sequencers (round-robin polling)
+cargo run --release --features gpu --bin zksync_os_fri_prover -- --sequencer-urls http://localhost:3124,http://localhost:3125,http://localhost:3126 --app-bin-path ./multiblock_batch.bin --path ./output/fri_proof.json
 ```
 
 Specify optional `--iterations` argument to run FRI prover N times and then exit.
 Specify optional `--path` argument if you want to serialize FRI proof to file.
 Specify `--request_timeout_secs` argument to set a timeout for HTTP requests (default value is 2s).
+Specify `--sequencer-urls` to provide a comma-separated list of sequencer URLs to poll in round-robin fashion.
 
 **This command currently requires around 140 GB of RAM - and GPU**
 
@@ -61,12 +65,16 @@ Specify `--request_timeout_secs` argument to set a timeout for HTTP requests (de
 # optional - increase stack size to 300M (TODO: check if this could be lower)
 ulimit -s 300000
 
-# start SNARK prover
-RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_snark_prover -- run-prover --sequencer-url http://localhost:3124 --binary-path ./multiblock_batch.bin --trusted-setup-file crs/setup_compact.key --output-dir ./outputs
+# start SNARK prover with a single sequencer
+RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_snark_prover -- run-prover --sequencer-urls http://localhost:3124 --binary-path ./multiblock_batch.bin --trusted-setup-file crs/setup_compact.key --output-dir ./outputs
+
+# start SNARK prover with multiple sequencers (round-robin polling)
+RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_snark_prover -- run-prover --sequencer-urls http://localhost:3124,http://localhost:3125,http://localhost:3126 --binary-path ./multiblock_batch.bin --trusted-setup-file crs/setup_compact.key --output-dir ./outputs
 ```
 
 Specify optional `--iterations` argument to run SNARK prover N times and then exit.
 Specify `--request_timeout_secs` argument to set a timeout for HTTP requests (default value is 2s).
+Specify `--sequencer-urls` to provide a comma-separated list of sequencer URLs to poll in round-robin fashion.
 
 **This one is only needed if you want to manually upload.**
 

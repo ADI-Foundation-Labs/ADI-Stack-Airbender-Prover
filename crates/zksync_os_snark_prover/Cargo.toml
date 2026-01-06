@@ -36,6 +36,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 vise.workspace = true
 vise-exporter.workspace = true
+url.workspace = true
 
 [features]
 gpu = ["zksync_airbender_cli/gpu", "zkos_wrapper/gpu", "proof-compression/gpu"]

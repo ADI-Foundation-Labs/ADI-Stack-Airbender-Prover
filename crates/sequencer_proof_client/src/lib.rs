@@ -1,13 +1,18 @@
 // TODO: Currently disabled as it's not used anywhere. Needs a rework anyways.
 // pub mod file_based_proof_client;
 
+pub mod multi_sequencer_proof_client;
 pub mod sequencer_proof_client;
+
+pub use multi_sequencer_proof_client::MultiSequencerProofClient;
+pub use sequencer_proof_client::SequencerProofClient;
 
 use crate::metrics::SEQUENCER_CLIENT_METRICS;
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_airbender_execution_utils::ProgramProof;
 
@@ -108,7 +113,9 @@ pub struct FriJobInputs {
 }
 
 #[async_trait]
-pub trait ProofClient {
+pub trait ProofClient: Send + Sync {
+    /// Returns the sequencer URL for logging purposes
+    fn sequencer_url(&self) -> &Url;
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>>;
     async fn submit_fri_proof(
         &self,
