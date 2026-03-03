@@ -1,9 +1,20 @@
 use vise::{EncodeLabelSet, EncodeLabelValue, Family, Histogram, Metrics};
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, EncodeLabelSet)]
+pub struct SequencerLabel {
+    pub sequencer: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, EncodeLabelSet)]
+pub(crate) struct SequencerClientLabel {
+    pub sequencer: String,
+    pub r#type: Method,
+}
+
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, EncodeLabelValue, EncodeLabelSet,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, EncodeLabelValue,
 )]
-#[metrics(label = "type", rename_all = "snake_case")]
+#[metrics(rename_all = "snake_case")]
 pub(crate) enum Method {
     PickFri,
     SubmitFri,
@@ -15,7 +26,7 @@ pub(crate) enum Method {
 #[metrics(prefix = "sequencer_client")]
 pub struct SequencerClientMetrics {
     #[metrics(buckets = vise::Buckets::exponential(0.001..=2.0, 2.0), unit = vise::Unit::Seconds)]
-    pub time_taken: Family<Method, Histogram>,
+    pub(crate) time_taken: Family<SequencerClientLabel, Histogram>,
 }
 
 #[vise::register]

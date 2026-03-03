@@ -2,8 +2,9 @@ use core::fmt;
 use std::{collections::HashMap, net::Ipv4Addr, time::Duration};
 
 use tokio::{sync::watch, time::Instant};
-use vise::{Counter, Gauge, Histogram, Metrics, MetricsCollection};
+use vise::{Counter, Family, Gauge, Histogram, Metrics, MetricsCollection};
 use vise_exporter::MetricsExporter;
+pub use zksync_sequencer_proof_client::metrics::SequencerLabel;
 
 pub async fn start_metrics_exporter(
     port: u16,
@@ -31,17 +32,17 @@ pub struct SnarkProverMetrics {
     #[metrics(buckets = vise::Buckets::linear(50.0..=200.0, 25.0), unit = vise::Unit::Seconds)]
     pub time_taken_startup: Histogram,
     #[metrics(buckets = vise::Buckets::linear(1.0..=150.0, 20.0), unit = vise::Unit::Seconds)]
-    pub time_taken_merge_fri: Histogram,
+    pub time_taken_merge_fri: Family<SequencerLabel, Histogram>,
     #[metrics(buckets = vise::Buckets::linear(5.0..=20.0, 2.5), unit = vise::Unit::Seconds)]
-    pub time_taken_final_proof: Histogram,
+    pub time_taken_final_proof: Family<SequencerLabel, Histogram>,
     #[metrics(buckets = vise::Buckets::linear(50.0..=200.0, 25.0), unit = vise::Unit::Seconds)]
-    pub time_taken_snark: Histogram,
+    pub time_taken_snark: Family<SequencerLabel, Histogram>,
     #[metrics(buckets = vise::Buckets::linear(50.0..=200.0, 25.0), unit = vise::Unit::Seconds)]
-    pub time_taken_full: Histogram,
-    pub fri_proofs_merged: Gauge,
-    pub latest_proven_batch: Gauge,
+    pub time_taken_full: Family<SequencerLabel, Histogram>,
+    pub fri_proofs_merged: Family<SequencerLabel, Gauge>,
+    pub latest_proven_batch: Family<SequencerLabel, Gauge>,
     /// Number of timeout errors when communicating with sequencer
-    pub timeout_errors: Counter,
+    pub timeout_errors: Family<SequencerLabel, Counter>,
 }
 
 #[vise::register]
@@ -73,6 +74,7 @@ impl fmt::Display for SnarkStage {
 #[derive(Debug, Clone)]
 pub(crate) struct SnarkProofTimeStats {
     time_taken: HashMap<SnarkStage, Duration>,
+    label: SequencerLabel,
 }
 
 impl fmt::Display for SnarkProofTimeStats {
@@ -86,26 +88,23 @@ impl fmt::Display for SnarkProofTimeStats {
 }
 
 impl SnarkProofTimeStats {
-    pub fn new() -> Self {
+    pub fn new(label: SequencerLabel) -> Self {
         Self {
             time_taken: HashMap::new(),
+            label,
         }
     }
 
     pub fn observe_step(&mut self, stage: SnarkStage, duration: Duration) {
         self.time_taken.insert(stage, duration);
         match stage {
-            SnarkStage::MergeFri => SNARK_PROVER_METRICS
-                .time_taken_merge_fri
+            SnarkStage::MergeFri => SNARK_PROVER_METRICS.time_taken_merge_fri[&self.label]
                 .observe(duration.as_secs_f64()),
-            SnarkStage::FinalProof => SNARK_PROVER_METRICS
-                .time_taken_final_proof
+            SnarkStage::FinalProof => SNARK_PROVER_METRICS.time_taken_final_proof[&self.label]
                 .observe(duration.as_secs_f64()),
-            SnarkStage::Snark => SNARK_PROVER_METRICS
-                .time_taken_snark
+            SnarkStage::Snark => SNARK_PROVER_METRICS.time_taken_snark[&self.label]
                 .observe(duration.as_secs_f64()),
-            SnarkStage::Full => SNARK_PROVER_METRICS
-                .time_taken_full
+            SnarkStage::Full => SNARK_PROVER_METRICS.time_taken_full[&self.label]
                 .observe(duration.as_secs_f64()),
         }
     }

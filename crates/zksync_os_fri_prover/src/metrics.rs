@@ -1,8 +1,9 @@
 use std::net::Ipv4Addr;
 
 use tokio::sync::watch;
-use vise::{Counter, Gauge, Histogram, Metrics, MetricsCollection};
+use vise::{Counter, Family, Gauge, Histogram, Metrics, MetricsCollection};
 use vise_exporter::MetricsExporter;
+pub use zksync_sequencer_proof_client::metrics::SequencerLabel;
 
 pub async fn start_metrics_exporter(
     port: u16,
@@ -28,10 +29,10 @@ pub async fn start_metrics_exporter(
 #[metrics(prefix = "fri_prover")]
 pub struct FriProverMetrics {
     #[metrics(buckets = vise::Buckets::linear(1.0..=5.0, 0.5), unit = vise::Unit::Seconds)]
-    pub time_taken: Histogram,
-    pub latest_proven_batch: Gauge,
+    pub time_taken: Family<SequencerLabel, Histogram>,
+    pub latest_proven_batch: Family<SequencerLabel, Gauge>,
     /// Number of timeout errors when communicating with sequencer
-    pub timeout_errors: Counter,
+    pub timeout_errors: Family<SequencerLabel, Counter>,
 }
 
 #[vise::register]

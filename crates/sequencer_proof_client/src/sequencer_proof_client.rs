@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crate::metrics::Method;
+use crate::metrics::{Method, SequencerClientLabel};
 use crate::sequencer_endpoint::SequencerEndpoint;
 use crate::{
     FailedFriProofPayload, FriJobInputs, GetSnarkProofPayload, NextFriProverJobPayload,
@@ -162,8 +162,11 @@ impl ProofClient for SequencerProofClient {
             .await
             .context("Pick Fri Job request failed")?;
 
-        SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickFri]
-            .observe(started_at.elapsed().as_secs_f64());
+        SEQUENCER_CLIENT_METRICS.time_taken[&SequencerClientLabel {
+            sequencer: self.endpoint.to_string(),
+            r#type: Method::PickFri,
+        }]
+        .observe(started_at.elapsed().as_secs_f64());
 
         match resp.status() {
             StatusCode::OK => {
@@ -208,8 +211,11 @@ impl ProofClient for SequencerProofClient {
             .await
             .context("Submit Fri Proof request failed")?;
 
-        SEQUENCER_CLIENT_METRICS.time_taken[&Method::SubmitFri]
-            .observe(started_at.elapsed().as_secs_f64());
+        SEQUENCER_CLIENT_METRICS.time_taken[&SequencerClientLabel {
+            sequencer: self.endpoint.to_string(),
+            r#type: Method::SubmitFri,
+        }]
+        .observe(started_at.elapsed().as_secs_f64());
 
         if resp.status().is_success() {
             Ok(())
@@ -234,8 +240,11 @@ impl ProofClient for SequencerProofClient {
             .await
             .context("Pick Snark Job request failed")?;
 
-        SEQUENCER_CLIENT_METRICS.time_taken[&Method::PickSnark]
-            .observe(started_at.elapsed().as_secs_f64());
+        SEQUENCER_CLIENT_METRICS.time_taken[&SequencerClientLabel {
+            sequencer: self.endpoint.to_string(),
+            r#type: Method::PickSnark,
+        }]
+        .observe(started_at.elapsed().as_secs_f64());
 
         match resp.status() {
             StatusCode::OK => {
@@ -281,8 +290,11 @@ impl ProofClient for SequencerProofClient {
             .error_for_status()
             .context("Request returned error status")?;
 
-        SEQUENCER_CLIENT_METRICS.time_taken[&Method::SubmitSnark]
-            .observe(started_at.elapsed().as_secs_f64());
+        SEQUENCER_CLIENT_METRICS.time_taken[&SequencerClientLabel {
+            sequencer: self.endpoint.to_string(),
+            r#type: Method::SubmitSnark,
+        }]
+        .observe(started_at.elapsed().as_secs_f64());
         Ok(())
     }
 }

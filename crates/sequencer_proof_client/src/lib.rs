@@ -16,7 +16,7 @@ use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_airbender_execution_utils::ProgramProof;
 
-mod metrics;
+pub mod metrics;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, PartialOrd, Ord)]
 pub struct L2BatchNumber(pub u32);
