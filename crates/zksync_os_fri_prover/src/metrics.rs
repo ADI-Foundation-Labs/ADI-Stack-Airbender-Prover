@@ -1,8 +1,9 @@
 use std::net::Ipv4Addr;
 
 use tokio::sync::watch;
-use vise::{Counter, EncodeLabelSet, Family, Gauge, Histogram, Metrics, MetricsCollection};
+use vise::{Counter, Family, Gauge, Histogram, Metrics, MetricsCollection};
 use vise_exporter::MetricsExporter;
+pub use zksync_sequencer_proof_client::metrics::SequencerLabel;
 
 pub async fn start_metrics_exporter(
     port: u16,
@@ -22,11 +23,6 @@ pub async fn start_metrics_exporter(
         .map_err(|e| anyhow::anyhow!("Failed starting metrics server: {e}"))?;
 
     Ok(())
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, EncodeLabelSet)]
-pub struct SequencerLabel {
-    pub sequencer: String,
 }
 
 #[derive(Debug, Clone, Metrics)]
