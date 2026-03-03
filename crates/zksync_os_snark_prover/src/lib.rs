@@ -21,7 +21,7 @@ use zksync_airbender_execution_utils::{
 };
 use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
 
-use crate::metrics::{SnarkProofTimeStats, SnarkStage, SNARK_PROVER_METRICS};
+use crate::metrics::{SequencerLabel, SnarkProofTimeStats, SnarkStage, SNARK_PROVER_METRICS};
 
 pub mod metrics;
 
@@ -61,10 +61,9 @@ pub fn merge_fris(
     snark_proof_input: SnarkProofInputs,
     verifier_binary: &Vec<u32>,
     gpu_state: &mut Option<&mut GpuSharedState>,
+    label: &SequencerLabel,
 ) -> ProgramProof {
-    SNARK_PROVER_METRICS
-        .fri_proofs_merged
-        .set(snark_proof_input.fri_proofs.len() as i64);
+    SNARK_PROVER_METRICS.fri_proofs_merged[label].set(snark_proof_input.fri_proofs.len() as i64);
 
     if snark_proof_input.fri_proofs.len() == 1 {
         tracing::info!("No proof merging needed, only one proof provided");
@@ -241,6 +240,10 @@ pub async fn run_inner(
     disable_zk: bool,
     supported_protocol_versions: &SupportedProtocolVersions,
 ) -> anyhow::Result<bool> {
+    let label = SequencerLabel {
+        sequencer: client.sequencer_url().to_string(),
+    };
+
     tracing::debug!("Picking job from sequencer {}", client.sequencer_url());
     let snark_proof_input = match client.pick_snark_job().await {
         Ok(Some(snark_proof_input)) => {
@@ -280,7 +283,7 @@ pub async fn run_inner(
                     client.sequencer_url()
                 );
                 tracing::error!("Exiting prover due to timeout");
-                SNARK_PROVER_METRICS.timeout_errors.inc();
+                SNARK_PROVER_METRICS.timeout_errors[&label].inc();
                 return Ok(false);
             }
             tracing::error!(
@@ -313,10 +316,10 @@ pub async fn run_inner(
     let mut gpu_state = None;
     tracing::info!("Finished initializing GPU state");
 
-    let mut stats = SnarkProofTimeStats::new();
+    let mut stats = SnarkProofTimeStats::new(label.clone());
 
     let proof = stats.measure_step(SnarkStage::MergeFri, || {
-        merge_fris(snark_proof_input, verifier_binary, &mut gpu_state)
+        merge_fris(snark_proof_input, verifier_binary, &mut gpu_state, &label)
     });
 
     // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
@@ -385,9 +388,7 @@ pub async fn run_inner(
                 client.sequencer_url()
             );
 
-            SNARK_PROVER_METRICS
-                .latest_proven_batch
-                .set(end_batch.0 as i64);
+            SNARK_PROVER_METRICS.latest_proven_batch[&label].set(end_batch.0 as i64);
 
             Ok(true)
         }
@@ -405,7 +406,7 @@ pub async fn run_inner(
                     client.sequencer_url()
                 );
                 tracing::error!("Exiting prover due to timeout");
-                SNARK_PROVER_METRICS.timeout_errors.inc();
+                SNARK_PROVER_METRICS.timeout_errors[&label].inc();
             } else {
                 tracing::error!(
                     "Failed to submit SNARK job with vk hash {}, batches {} to {} to sequencer {} due to {e:?}, skipping",

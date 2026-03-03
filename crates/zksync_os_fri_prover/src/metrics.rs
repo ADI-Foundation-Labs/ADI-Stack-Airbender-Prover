@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 
 use tokio::sync::watch;
-use vise::{Counter, Gauge, Histogram, Metrics, MetricsCollection};
+use vise::{Counter, EncodeLabelSet, Family, Gauge, Histogram, Metrics, MetricsCollection};
 use vise_exporter::MetricsExporter;
 
 pub async fn start_metrics_exporter(
@@ -24,14 +24,19 @@ pub async fn start_metrics_exporter(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, EncodeLabelSet)]
+pub struct SequencerLabel {
+    pub sequencer: String,
+}
+
 #[derive(Debug, Clone, Metrics)]
 #[metrics(prefix = "fri_prover")]
 pub struct FriProverMetrics {
     #[metrics(buckets = vise::Buckets::linear(1.0..=5.0, 0.5), unit = vise::Unit::Seconds)]
-    pub time_taken: Histogram,
-    pub latest_proven_batch: Gauge,
+    pub time_taken: Family<SequencerLabel, Histogram>,
+    pub latest_proven_batch: Family<SequencerLabel, Gauge>,
     /// Number of timeout errors when communicating with sequencer
-    pub timeout_errors: Counter,
+    pub timeout_errors: Family<SequencerLabel, Counter>,
 }
 
 #[vise::register]

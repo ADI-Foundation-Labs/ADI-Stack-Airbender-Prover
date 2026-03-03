@@ -18,7 +18,7 @@ use zksync_sequencer_proof_client::{
     FriJobInputs, ProofClient, SequencerEndpoint, SequencerProofClient,
 };
 
-use crate::metrics::FRI_PROVER_METRICS;
+use crate::metrics::{SequencerLabel, FRI_PROVER_METRICS};
 
 pub mod metrics;
 
@@ -221,6 +221,10 @@ pub async fn run_inner(
     path: Option<PathBuf>,
     supported_versions: &SupportedProtocolVersions,
 ) -> anyhow::Result<bool> {
+    let label = SequencerLabel {
+        sequencer: client.sequencer_url().to_string(),
+    };
+
     let FriJobInputs {
         batch_number,
         vk_hash,
@@ -238,7 +242,7 @@ pub async fn run_inner(
                     client.sequencer_url()
                 );
                 tracing::error!("Exiting prover due to timeout");
-                FRI_PROVER_METRICS.timeout_errors.inc();
+                FRI_PROVER_METRICS.timeout_errors[&label].inc();
                 return Ok(false);
             }
             tracing::error!(
@@ -302,13 +306,11 @@ pub async fn run_inner(
         serialize_to_file(&proof_b64, path);
     }
 
-    FRI_PROVER_METRICS
-        .latest_proven_batch
-        .set(batch_number as i64);
+    FRI_PROVER_METRICS.latest_proven_batch[&label].set(batch_number as i64);
 
     let proof_time = started_at.elapsed().as_secs_f64();
 
-    FRI_PROVER_METRICS.time_taken.observe(proof_time);
+    FRI_PROVER_METRICS.time_taken[&label].observe(proof_time);
 
     match client
         .submit_fri_proof(batch_number, vk_hash.clone(), proof_b64)
@@ -339,7 +341,7 @@ pub async fn run_inner(
                     err
                 );
                 tracing::error!("Exiting prover due to timeout");
-                FRI_PROVER_METRICS.timeout_errors.inc();
+                FRI_PROVER_METRICS.timeout_errors[&label].inc();
             } else {
                 tracing::error!(
                     "Failed to submit proof for batch number {} with vk hash {} to sequencer {}: {}",
