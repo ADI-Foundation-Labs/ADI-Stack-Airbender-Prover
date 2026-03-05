@@ -6,7 +6,7 @@ use tokio::sync::watch;
 use zksync_os_snark_prover::{
     generate_verification_key, init_tracing, metrics, run_linking_fri_snark,
 };
-use zksync_sequencer_proof_client::{SequencerEndpoint, SequencerProofClient};
+use zksync_sequencer_proof_client::{ClientManager, SequencerEndpoint};
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
 pub struct SetupOptions {
@@ -57,6 +57,11 @@ enum Commands {
             default_value = "http://localhost:3124"
         )]
         sequencer_urls: Vec<SequencerEndpoint>,
+        /// Path to a file containing sequencer URLs (one per line).
+        /// When provided, takes precedence over --sequencer-urls.
+        /// The file is re-read if its modification time changes between proving rounds.
+        #[arg(long)]
+        sequencer_urls_file: Option<std::path::PathBuf>,
         #[clap(flatten)]
         setup: SetupOptions,
         /// Number of iterations before exiting. Only successfully generated proofs count. If not specified, runs indefinitely
@@ -98,6 +103,7 @@ fn main() {
         ),
         Commands::RunProver {
             sequencer_urls,
+            sequencer_urls_file,
             setup:
                 SetupOptions {
                     binary_path,
@@ -129,14 +135,13 @@ fn main() {
 
                 let timeout = Duration::from_secs(request_timeout_secs);
 
-                tracing::info!(
-                    "Creating {} sequencer proof clients for urls: {:?}",
-                    sequencer_urls.len(),
-                    sequencer_urls
-                );
-                let clients =
-                    SequencerProofClient::new_clients(sequencer_urls, prover_name, Some(timeout))
-                        .expect("failed to create sequencer proof clients");
+                let client_manager = ClientManager::new(
+                    sequencer_urls_file,
+                    sequencer_urls,
+                    prover_name,
+                    Some(timeout),
+                )
+                .expect("failed to create sequencer proof clients");
 
                 tracing::info!(
                     "Starting zksync_os_snark_prover with request timeout of {}s",
@@ -146,7 +151,7 @@ fn main() {
                 tokio::select! {
                     result = run_linking_fri_snark(
                         binary_path,
-                        clients,
+                        client_manager,
                         output_dir,
                         trusted_setup_file,
                         iterations,
