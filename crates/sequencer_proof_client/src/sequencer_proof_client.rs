@@ -5,7 +5,8 @@ use crate::sequencer_endpoint::SequencerEndpoint;
 use crate::{
     FailedFriProofPayload, FriJobInputs, FriJobOwnership, FriJobStatusPayload,
     GetSnarkProofPayload, NextFriProverJobPayload, PeekableProofClient, ProofClient,
-    SnarkProofInputs, SubmitFriProofPayload, SubmitSnarkProofPayload,
+    SnarkJobStatusPayload, SnarkProofInputs, SnarkRunOwnership, SubmitFriProofPayload,
+    SubmitSnarkProofPayload,
 };
 use crate::{L2BatchNumber, SEQUENCER_CLIENT_METRICS};
 use anyhow::{anyhow, Context};
@@ -281,6 +282,41 @@ impl ProofClient for SequencerProofClient {
         Ok(FriJobOwnership::classify(
             entries,
             batch_number,
+            &self.prover_name,
+        ))
+    }
+
+    async fn snark_run_ownership(&self, from: u32, to: u32) -> anyhow::Result<SnarkRunOwnership> {
+        let url = self.build_url("SNARK/status/")?;
+
+        let started_at = Instant::now();
+
+        let resp = self
+            .client
+            .get(url.clone())
+            .send()
+            .await
+            .context("Snark Run Status request failed")?;
+
+        SEQUENCER_CLIENT_METRICS.time_taken[&Method::SnarkRunStatus]
+            .observe(started_at.elapsed().as_secs_f64());
+
+        if resp.status() != StatusCode::OK {
+            return Err(anyhow!(
+                "Unexpected status {} when reading SNARK job status at {url}",
+                resp.status()
+            ));
+        }
+
+        let entries: Vec<SnarkJobStatusPayload> = resp
+            .json()
+            .await
+            .context("Failed to parse SNARK job status body")?;
+
+        Ok(SnarkRunOwnership::classify(
+            entries,
+            from,
+            to,
             &self.prover_name,
         ))
     }

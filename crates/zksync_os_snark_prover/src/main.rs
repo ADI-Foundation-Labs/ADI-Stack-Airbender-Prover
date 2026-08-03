@@ -83,6 +83,10 @@ enum Commands {
         /// Name of the prover for identification in the sequencer
         #[arg(long, default_value = "unknown_prover")]
         prover_name: String,
+        /// How often to check whether this prover still owns the run it is proving, in seconds.
+        /// `0` disables cancellation entirely.
+        #[arg(long, default_value = "1")]
+        cancel_poll_interval_secs: u64,
     },
 }
 
@@ -136,6 +140,7 @@ fn main() {
             request_timeout_secs,
             disable_zk,
             prover_name,
+            cancel_poll_interval_secs,
         } => {
             // TODO: edit this comment
             // we need a bigger stack, due to crypto code exhausting default stack size, 40 MBs picked here
@@ -178,6 +183,8 @@ fn main() {
                         trusted_setup_file,
                         iterations,
                         disable_zk,
+                        (cancel_poll_interval_secs > 0)
+                            .then(|| Duration::from_secs(cancel_poll_interval_secs)),
                     ) => {
                         tracing::info!("SNARK prover finished");
                         result.expect("SNARK prover finished with error");

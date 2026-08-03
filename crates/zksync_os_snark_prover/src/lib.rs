@@ -19,7 +19,9 @@ use zksync_airbender_execution_utils::{
     get_padded_binary, Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers,
     UNIVERSAL_CIRCUIT_VERIFIER,
 };
-use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
+use zksync_sequencer_proof_client::{
+    with_watchdog, CancelFlag, ProofClient, SnarkProofInputs, Watched,
+};
 
 use crate::metrics::{SnarkProofTimeStats, SnarkStage, SNARK_PROVER_METRICS};
 
@@ -57,23 +59,37 @@ pub fn generate_verification_key(
     }
 }
 
+/// Links the run's FRI proofs into one, returning `None` if the run was cancelled.
+///
+/// Every call into the prover returns here, so the flag is read once per linked
+/// batch and once per recursion step — the finest granularity this repo owns.
 pub fn merge_fris(
     snark_proof_input: SnarkProofInputs,
     verifier_binary: &Vec<u32>,
     gpu_state: &mut Option<&mut GpuSharedState>,
-) -> ProgramProof {
+    cancel: &CancelFlag,
+) -> Option<ProgramProof> {
     SNARK_PROVER_METRICS
         .fri_proofs_merged
         .set(snark_proof_input.fri_proofs.len() as i64);
 
     if snark_proof_input.fri_proofs.len() == 1 {
         tracing::info!("No proof merging needed, only one proof provided");
-        return snark_proof_input.fri_proofs[0].clone();
+        return Some(snark_proof_input.fri_proofs[0].clone());
     }
     tracing::info!("Starting proof merging");
 
     let mut proof = snark_proof_input.fri_proofs[0].clone();
     for i in 1..snark_proof_input.fri_proofs.len() {
+        if cancel.is_cancelled() {
+            tracing::info!(
+                "Cancelled after linking {} of {} proofs",
+                i,
+                snark_proof_input.fri_proofs.len()
+            );
+            return None;
+        }
+
         let up_to_batch = snark_proof_input.from_batch_number.0 + i as u32 - 1;
         let curr_batch = snark_proof_input.from_batch_number.0 + i as u32;
         tracing::info!(
@@ -108,6 +124,13 @@ pub fn merge_fris(
         let mut recursion_level = 0;
 
         while current_proof_list.reduced_proofs.len() > 2 {
+            if cancel.is_cancelled() {
+                tracing::info!(
+                    "Cancelled at recursion step {recursion_level} of batch {curr_batch}"
+                );
+                return None;
+            }
+
             tracing::info!("Recursion step {} after fri merging", recursion_level);
             recursion_level += 1;
             let non_determinism_data =
@@ -134,7 +157,7 @@ pub fn merge_fris(
         snark_proof_input.from_batch_number,
         snark_proof_input.to_batch_number
     );
-    proof
+    Some(proof)
 }
 
 #[cfg(feature = "gpu")]
@@ -160,6 +183,7 @@ pub async fn run_linking_fri_snark(
     trusted_setup_file: String,
     iterations: Option<usize>,
     disable_zk: bool,
+    cancel_poll_interval: Option<Duration>,
 ) -> anyhow::Result<()> {
     let startup_started_at = Instant::now();
 
@@ -173,6 +197,11 @@ pub async fn run_linking_fri_snark(
 
     let supported_versions = SupportedProtocolVersions::default();
     tracing::info!("{:#?}", supported_versions);
+
+    match cancel_poll_interval {
+        Some(interval) => tracing::info!("Checking run ownership every {}s", interval.as_secs()),
+        None => tracing::warn!("Run ownership checks disabled, jobs will never be cancelled"),
+    }
 
     let verifier_binary = get_padded_binary(UNIVERSAL_CIRCUIT_VERIFIER);
 
@@ -204,6 +233,7 @@ pub async fn run_linking_fri_snark(
             &precomputations,
             disable_zk,
             &supported_versions,
+            cancel_poll_interval,
         )
         .await
         .expect("Failed to run SNARK prover");
@@ -240,6 +270,7 @@ pub async fn run_inner(
     ),
     disable_zk: bool,
     supported_protocol_versions: &SupportedProtocolVersions,
+    cancel_poll_interval: Option<Duration>,
 ) -> anyhow::Result<bool> {
     tracing::debug!("Picking job from sequencer {}", client.sequencer_url());
     let snark_proof_input = match client.pick_snark_job().await {
@@ -301,76 +332,110 @@ pub async fn run_inner(
         start_batch,
         end_batch,
     );
-    tracing::info!("Initializing GPU state");
-    #[cfg(feature = "gpu")]
-    let mut gpu_state_store = GpuSharedState::new(
-        verifier_binary,
-        zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
-    );
-    #[cfg(feature = "gpu")]
-    let mut gpu_state = Some(&mut gpu_state_store);
-    #[cfg(not(feature = "gpu"))]
-    let mut gpu_state = None;
-    tracing::info!("Finished initializing GPU state");
-
-    let mut stats = SnarkProofTimeStats::new();
-
-    let proof = stats.measure_step(SnarkStage::MergeFri, || {
-        merge_fris(snark_proof_input, verifier_binary, &mut gpu_state)
-    });
-
-    // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
-    #[cfg(feature = "gpu")]
-    drop(gpu_state_store);
-
-    tracing::info!("Creating final proof before SNARKification");
-
-    let final_proof = stats.measure_step(SnarkStage::FinalProof, || {
-        create_final_proofs_from_program_proof(
-            proof,
-            RecursionStrategy::UseReducedLog23Machine,
+    let snark_proof = with_watchdog(
+        client,
+        Watched::Snark {
+            from: start_batch.0,
+            to: end_batch.0,
+        },
+        cancel_poll_interval,
+        |cancel| {
+            tracing::info!("Initializing GPU state");
             #[cfg(feature = "gpu")]
-            true,
+            let mut gpu_state_store = GpuSharedState::new(
+                verifier_binary,
+                zksync_airbender_cli::prover_utils::MainCircuitType::ReducedRiscVMachine,
+            );
+            #[cfg(feature = "gpu")]
+            let mut gpu_state = Some(&mut gpu_state_store);
             #[cfg(not(feature = "gpu"))]
-            false,
-        )
-    });
+            let mut gpu_state = None;
+            tracing::info!("Finished initializing GPU state");
 
-    tracing::info!("Finished creating final proof");
-    let one_fri_path = Path::new(&output_dir).join("one_fri.tmp");
+            let mut stats = SnarkProofTimeStats::new();
 
-    serialize_to_file(&final_proof, &one_fri_path);
+            let proof = stats.measure_step(SnarkStage::MergeFri, || {
+                merge_fris(snark_proof_input, verifier_binary, &mut gpu_state, cancel)
+            })?;
 
-    tracing::info!("SNARKifying proof");
-    let start = Instant::now();
-    match prove(
-        one_fri_path.into_os_string().into_string().unwrap(),
-        output_dir.clone(),
-        Some(trusted_setup_file.clone()),
-        false,
-        #[cfg(feature = "gpu")]
-        Some(precomputations),
-        // note that the API is use_zk, so we invert the disable_zk flag
-        !disable_zk,
-    ) {
-        Ok(()) => {
-            stats.observe_step(SnarkStage::Snark, start.elapsed());
+            // Drop GPU state to release the airbender GPU resources (as now Final Proof will be taking them).
+            #[cfg(feature = "gpu")]
+            drop(gpu_state_store);
 
-            stats.observe_full();
+            if cancel.is_cancelled() {
+                tracing::info!("Cancelled after merging, before the final proof");
+                return None;
+            }
 
-            tracing::info!("Finished generating proof, time stats: {}", stats);
-        }
-        Err(e) => {
-            tracing::error!("failed to SNARKify proof: {e:?}, time stats: {}", stats);
-        }
-    }
+            tracing::info!("Creating final proof before SNARKification");
 
-    let snark_proof: SnarkWrapperProof = deserialize_from_file(
-        Path::new(&output_dir)
-            .join("snark_proof.json")
-            .to_str()
-            .unwrap(),
+            let final_proof = stats.measure_step(SnarkStage::FinalProof, || {
+                create_final_proofs_from_program_proof(
+                    proof,
+                    RecursionStrategy::UseReducedLog23Machine,
+                    #[cfg(feature = "gpu")]
+                    true,
+                    #[cfg(not(feature = "gpu"))]
+                    false,
+                )
+            });
+
+            tracing::info!("Finished creating final proof");
+
+            if cancel.is_cancelled() {
+                tracing::info!("Cancelled after the final proof, before SNARKification");
+                return None;
+            }
+
+            let one_fri_path = Path::new(&output_dir).join("one_fri.tmp");
+
+            serialize_to_file(&final_proof, &one_fri_path);
+
+            tracing::info!("SNARKifying proof");
+            let start = Instant::now();
+            match prove(
+                one_fri_path.into_os_string().into_string().unwrap(),
+                output_dir.clone(),
+                Some(trusted_setup_file.clone()),
+                false,
+                #[cfg(feature = "gpu")]
+                Some(precomputations),
+                // note that the API is use_zk, so we invert the disable_zk flag
+                !disable_zk,
+            ) {
+                Ok(()) => {
+                    stats.observe_step(SnarkStage::Snark, start.elapsed());
+
+                    stats.observe_full();
+
+                    tracing::info!("Finished generating proof, time stats: {}", stats);
+                }
+                Err(e) => {
+                    tracing::error!("failed to SNARKify proof: {e:?}, time stats: {}", stats);
+                }
+            }
+
+            let snark_proof: SnarkWrapperProof = deserialize_from_file(
+                Path::new(&output_dir)
+                    .join("snark_proof.json")
+                    .to_str()
+                    .unwrap(),
+            );
+
+            Some(snark_proof)
+        },
     );
+
+    let Some(snark_proof) = snark_proof else {
+        tracing::warn!(
+            "Abandoned SNARK run {} to {} after it was reassigned by sequencer {}",
+            start_batch,
+            end_batch,
+            client.sequencer_url()
+        );
+        SNARK_PROVER_METRICS.cancelled_jobs.inc();
+        return Ok(false);
+    };
 
     match client
         .submit_snark_proof(start_batch, end_batch, vk_hash.clone(), snark_proof)

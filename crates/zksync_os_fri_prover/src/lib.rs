@@ -16,6 +16,7 @@ use zksync_airbender_cli::prover_utils::{
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
 use zksync_sequencer_proof_client::{
     with_watchdog, CancelFlag, FriJobInputs, ProofClient, SequencerEndpoint, SequencerProofClient,
+    Watched,
 };
 
 use crate::metrics::FRI_PROVER_METRICS;
@@ -320,9 +321,12 @@ pub async fn run_inner(
         client.sequencer_url()
     );
 
-    let proof = with_watchdog(client, batch_number, cancel_poll_interval, |cancel| {
-        create_proof(prover_input, binary, circuit_limit, gpu_state, cancel)
-    });
+    let proof = with_watchdog(
+        client,
+        Watched::Fri(batch_number),
+        cancel_poll_interval,
+        |cancel| create_proof(prover_input, binary, circuit_limit, gpu_state, cancel),
+    );
 
     let Some(proof) = proof else {
         tracing::warn!(

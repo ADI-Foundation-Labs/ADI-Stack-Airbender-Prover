@@ -5,7 +5,7 @@ pub mod cancel;
 pub mod sequencer_endpoint;
 pub mod sequencer_proof_client;
 
-pub use cancel::{with_watchdog, CancelFlag};
+pub use cancel::{with_watchdog, CancelFlag, Watched};
 pub use sequencer_endpoint::SequencerEndpoint;
 pub use sequencer_proof_client::SequencerProofClient;
 
@@ -126,6 +126,18 @@ struct FriJobStatusPayload {
     assigned_to_prover_id: Option<String>,
 }
 
+/// The nested `snark_job` key of a `GET /SNARK/status/` entry.
+#[derive(Debug, Deserialize)]
+struct SnarkJobKey {
+    batch_number: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct SnarkJobStatusPayload {
+    snark_job: SnarkJobKey,
+    assigned_to_prover_id: Option<String>,
+}
+
 /// Who holds a FRI batch, as reported by `GET /status/`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FriJobOwnership {
@@ -167,6 +179,70 @@ impl FriJobOwnership {
     }
 }
 
+/// Who holds the batches of a SNARK run, as reported by `GET /SNARK/status/`.
+///
+/// Ownership is per batch, not per run — the sequencer assigns each batch of a
+/// picked run individually and keeps no grouping — so a run is lost as soon as
+/// any one of its batches is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SnarkRunOwnership {
+    /// Every batch of the range is present and still assigned to us.
+    Ours,
+    /// A batch went to a different prover — the only state that cancels.
+    Lost { batch_number: u32, owner: String },
+    /// Nothing was taken, but some batches are unassigned or absent.
+    Unconfirmed { unassigned: usize, unknown: usize },
+}
+
+impl SnarkRunOwnership {
+    /// True only for [`Self::Lost`] — every other state means keep proving.
+    #[must_use]
+    pub fn is_lost(&self) -> bool {
+        matches!(self, Self::Lost { .. })
+    }
+
+    /// Reads off who holds each batch of `from..=to` in a `GET /SNARK/status/` body.
+    ///
+    /// A single lost batch outranks any number of unassigned or absent ones: the
+    /// run cannot be submitted without it.
+    fn classify(
+        entries: Vec<SnarkJobStatusPayload>,
+        from: u32,
+        to: u32,
+        prover_name: &str,
+    ) -> SnarkRunOwnership {
+        let mut unassigned = 0;
+        let mut unknown = 0;
+
+        for batch_number in from..=to {
+            let entry = entries
+                .iter()
+                .find(|entry| entry.snark_job.batch_number == u64::from(batch_number));
+
+            match entry.map(|entry| &entry.assigned_to_prover_id) {
+                Some(Some(owner)) if owner == prover_name => {}
+                Some(Some(owner)) => {
+                    return SnarkRunOwnership::Lost {
+                        batch_number,
+                        owner: owner.clone(),
+                    }
+                }
+                Some(None) => unassigned += 1,
+                None => unknown += 1,
+            }
+        }
+
+        if unassigned == 0 && unknown == 0 {
+            SnarkRunOwnership::Ours
+        } else {
+            SnarkRunOwnership::Unconfirmed {
+                unassigned,
+                unknown,
+            }
+        }
+    }
+}
+
 #[async_trait]
 pub trait ProofClient: Send + Sync {
     /// Returns the sequencer URL for logging purposes.
@@ -193,6 +269,12 @@ pub trait ProofClient: Send + Sync {
     /// Errors are for the caller to treat as "keep proving" — an unreachable or
     /// unreadable sequencer must never be read as a cancellation.
     async fn fri_job_ownership(&self, batch_number: u32) -> anyhow::Result<FriJobOwnership>;
+
+    /// Read who currently holds the batches of `from..=to`, per `GET /SNARK/status/`.
+    ///
+    /// The path is multiplexer-only; a raw sequencer answers 404, which the caller
+    /// treats as "keep proving" like any other failure.
+    async fn snark_run_ownership(&self, from: u32, to: u32) -> anyhow::Result<SnarkRunOwnership>;
 
     /// Submit a SNARK proof for the processed batch range.
     async fn submit_snark_proof(
@@ -280,5 +362,102 @@ mod tests {
     fn absent_batch_keeps_proving() {
         assert_eq!(classify(99, "prover-a"), FriJobOwnership::Unknown);
         assert!(!classify(99, "prover-a").is_lost());
+    }
+
+    /// A `GET /SNARK/status/` body as mux emits it, extra fields included.
+    ///
+    /// Batches 10-12 are a run held by `snark-a`; 13 is free and 14 is missing.
+    const SNARK_STATUS_BODY: &str = r#"[
+      {
+        "snark_job": {"batch_number": 10, "vk_hash": "0xdead"},
+        "added_seconds_ago": 40,
+        "assigned_seconds_ago": 20,
+        "assigned_to_prover_id": "snark-a",
+        "current_attempt": 1
+      },
+      {
+        "snark_job": {"batch_number": 11, "vk_hash": "0xdead"},
+        "added_seconds_ago": 38,
+        "assigned_seconds_ago": 20,
+        "assigned_to_prover_id": "snark-a",
+        "current_attempt": 1
+      },
+      {
+        "snark_job": {"batch_number": 12, "vk_hash": "0xdead"},
+        "added_seconds_ago": 36,
+        "assigned_seconds_ago": 20,
+        "assigned_to_prover_id": "snark-a",
+        "current_attempt": 1
+      },
+      {
+        "snark_job": {"batch_number": 13, "vk_hash": "0xdead"},
+        "added_seconds_ago": 34,
+        "assigned_seconds_ago": null,
+        "assigned_to_prover_id": null,
+        "current_attempt": 2
+      }
+    ]"#;
+
+    fn classify_run(from: u32, to: u32, prover_name: &str) -> SnarkRunOwnership {
+        let entries: Vec<SnarkJobStatusPayload> =
+            serde_json::from_str(SNARK_STATUS_BODY).expect("status body should parse");
+        SnarkRunOwnership::classify(entries, from, to, prover_name)
+    }
+
+    #[test]
+    fn run_held_by_us_keeps_proving() {
+        assert_eq!(classify_run(10, 12, "snark-a"), SnarkRunOwnership::Ours);
+        assert!(!classify_run(10, 12, "snark-a").is_lost());
+    }
+
+    #[test]
+    fn one_reassigned_batch_loses_the_whole_run() {
+        let ownership = classify_run(10, 12, "snark-b");
+        assert_eq!(
+            ownership,
+            SnarkRunOwnership::Lost {
+                batch_number: 10,
+                owner: "snark-a".to_string()
+            }
+        );
+        assert!(ownership.is_lost());
+    }
+
+    #[test]
+    fn a_lost_batch_outranks_free_and_absent_ones() {
+        // 13 is free and 14 absent, but 12 went elsewhere — that decides it.
+        assert_eq!(
+            classify_run(12, 14, "snark-b"),
+            SnarkRunOwnership::Lost {
+                batch_number: 12,
+                owner: "snark-a".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn free_and_absent_batches_keep_proving() {
+        let ownership = classify_run(12, 14, "snark-a");
+        assert_eq!(
+            ownership,
+            SnarkRunOwnership::Unconfirmed {
+                unassigned: 1,
+                unknown: 1
+            }
+        );
+        assert!(!ownership.is_lost());
+    }
+
+    #[test]
+    fn a_run_absent_from_the_report_keeps_proving() {
+        let ownership = classify_run(90, 92, "snark-a");
+        assert_eq!(
+            ownership,
+            SnarkRunOwnership::Unconfirmed {
+                unassigned: 0,
+                unknown: 3
+            }
+        );
+        assert!(!ownership.is_lost());
     }
 }

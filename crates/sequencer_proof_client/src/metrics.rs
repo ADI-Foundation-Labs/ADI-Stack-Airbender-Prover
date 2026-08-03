@@ -10,6 +10,7 @@ pub(crate) enum Method {
     PickSnark,
     SubmitSnark,
     FriJobStatus,
+    SnarkRunStatus,
 }
 
 #[derive(Debug, Clone, Metrics)]
