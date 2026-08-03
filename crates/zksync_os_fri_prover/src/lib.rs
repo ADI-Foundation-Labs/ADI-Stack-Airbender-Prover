@@ -87,8 +87,6 @@ pub fn init_tracing() {
 }
 
 /// Proves `prover_input`, returning `None` if the job was cancelled.
-///
-/// The boundary between basic proving and recursion is the only one this repo owns.
 pub fn create_proof(
     prover_input: Vec<u32>,
     binary: &Vec<u32>,

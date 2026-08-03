@@ -1,12 +1,12 @@
 use std::time::{Duration, Instant};
 
 use crate::metrics::Method;
+use crate::ownership::{FriJobStatusPayload, SnarkJobStatusPayload};
 use crate::sequencer_endpoint::SequencerEndpoint;
 use crate::{
-    FailedFriProofPayload, FriJobInputs, FriJobOwnership, FriJobStatusPayload,
-    GetSnarkProofPayload, NextFriProverJobPayload, PeekableProofClient, ProofClient,
-    SnarkJobStatusPayload, SnarkProofInputs, SnarkRunOwnership, SubmitFriProofPayload,
-    SubmitSnarkProofPayload,
+    FailedFriProofPayload, FriJobInputs, FriJobOwnership, GetSnarkProofPayload,
+    NextFriProverJobPayload, PeekableProofClient, ProofClient, SnarkProofInputs, SnarkRunOwnership,
+    SubmitFriProofPayload, SubmitSnarkProofPayload,
 };
 use crate::{L2BatchNumber, SEQUENCER_CLIENT_METRICS};
 use anyhow::{anyhow, Context};
