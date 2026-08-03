@@ -58,6 +58,7 @@ Specify optional `--iterations` argument to run FRI prover N times and then exit
 Specify optional `--path` argument if you want to serialize FRI proof to file.
 Specify `--request_timeout_secs` argument to set a timeout for HTTP requests (default value is 2s).
 Specify `--sequencer-urls` to provide a comma-separated list of sequencer URLs to poll in round-robin fashion.
+Specify `--cancel-poll-interval-secs` to set how often the prover checks whether it still owns the batch it is proving (default 1s, `0` disables). While a batch is in flight the prover polls `GET /status/` on the sequencer that issued it; if the batch has been reassigned to a different prover, the job is abandoned at the next phase boundary instead of running to completion. Give each prover a unique `--prover-name` — the default `unknown_prover` makes two provers look like one owner, and neither will ever cancel.
 
 **This command currently requires around 140 GB of RAM - and GPU**
 

@@ -3,9 +3,9 @@ use std::time::{Duration, Instant};
 use crate::metrics::Method;
 use crate::sequencer_endpoint::SequencerEndpoint;
 use crate::{
-    FailedFriProofPayload, FriJobInputs, GetSnarkProofPayload, NextFriProverJobPayload,
-    PeekableProofClient, ProofClient, SnarkProofInputs, SubmitFriProofPayload,
-    SubmitSnarkProofPayload,
+    FailedFriProofPayload, FriJobInputs, FriJobOwnership, FriJobStatusPayload,
+    GetSnarkProofPayload, NextFriProverJobPayload, PeekableProofClient, ProofClient,
+    SnarkProofInputs, SubmitFriProofPayload, SubmitSnarkProofPayload,
 };
 use crate::{L2BatchNumber, SEQUENCER_CLIENT_METRICS};
 use anyhow::{anyhow, Context};
@@ -249,6 +249,40 @@ impl ProofClient for SequencerProofClient {
             StatusCode::NO_CONTENT => Ok(None),
             s => Err(anyhow!("Failed to pick SNARK job: status {s} from {url}")),
         }
+    }
+
+    async fn fri_job_ownership(&self, batch_number: u32) -> anyhow::Result<FriJobOwnership> {
+        let url = self.build_url("status/")?;
+
+        let started_at = Instant::now();
+
+        let resp = self
+            .client
+            .get(url.clone())
+            .send()
+            .await
+            .context("Fri Job Status request failed")?;
+
+        SEQUENCER_CLIENT_METRICS.time_taken[&Method::FriJobStatus]
+            .observe(started_at.elapsed().as_secs_f64());
+
+        if resp.status() != StatusCode::OK {
+            return Err(anyhow!(
+                "Unexpected status {} when reading job status at {url}",
+                resp.status()
+            ));
+        }
+
+        let entries: Vec<FriJobStatusPayload> = resp
+            .json()
+            .await
+            .context("Failed to parse job status body")?;
+
+        Ok(FriJobOwnership::classify(
+            entries,
+            batch_number,
+            &self.prover_name,
+        ))
     }
 
     async fn submit_snark_proof(

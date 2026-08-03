@@ -1,9 +1,11 @@
 // TODO: Currently disabled as it's not used anywhere. Needs a rework anyways.
 // pub mod file_based_proof_client;
 
+pub mod cancel;
 pub mod sequencer_endpoint;
 pub mod sequencer_proof_client;
 
+pub use cancel::{with_watchdog, CancelFlag};
 pub use sequencer_endpoint::SequencerEndpoint;
 pub use sequencer_proof_client::SequencerProofClient;
 
@@ -112,6 +114,59 @@ pub struct FriJobInputs {
     pub prover_input: Vec<u8>,
 }
 
+/// The nested `fri_job` key of a `GET /status/` entry.
+#[derive(Debug, Deserialize)]
+struct FriJobKey {
+    batch_number: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct FriJobStatusPayload {
+    fri_job: FriJobKey,
+    assigned_to_prover_id: Option<String>,
+}
+
+/// Who holds a FRI batch, as reported by `GET /status/`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FriJobOwnership {
+    /// Present and still assigned to us.
+    Ours,
+    /// Present and assigned to a different prover — the only state that cancels.
+    Lost { owner: String },
+    /// Present with no assignee, e.g. just reaped.
+    Unassigned,
+    /// Absent from the report.
+    Unknown,
+}
+
+impl FriJobOwnership {
+    /// True only for [`Self::Lost`] — every other state means keep proving.
+    #[must_use]
+    pub fn is_lost(&self) -> bool {
+        matches!(self, Self::Lost { .. })
+    }
+
+    /// Finds `batch_number` in a `GET /status/` body and reads off who holds it.
+    fn classify(
+        entries: Vec<FriJobStatusPayload>,
+        batch_number: u32,
+        prover_name: &str,
+    ) -> FriJobOwnership {
+        let Some(entry) = entries
+            .into_iter()
+            .find(|entry| entry.fri_job.batch_number == u64::from(batch_number))
+        else {
+            return FriJobOwnership::Unknown;
+        };
+
+        match entry.assigned_to_prover_id {
+            Some(owner) if owner == prover_name => FriJobOwnership::Ours,
+            Some(owner) => FriJobOwnership::Lost { owner },
+            None => FriJobOwnership::Unassigned,
+        }
+    }
+}
+
 #[async_trait]
 pub trait ProofClient: Send + Sync {
     /// Returns the sequencer URL for logging purposes.
@@ -132,6 +187,12 @@ pub trait ProofClient: Send + Sync {
     /// Fetch the next SNARK job to prove.
     /// Returns `Ok(None)` if there's no job pending (204 No Content).
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>>;
+
+    /// Read who currently holds `batch_number`, per `GET /status/`.
+    ///
+    /// Errors are for the caller to treat as "keep proving" — an unreachable or
+    /// unreadable sequencer must never be read as a cancellation.
+    async fn fri_job_ownership(&self, batch_number: u32) -> anyhow::Result<FriJobOwnership>;
 
     /// Submit a SNARK proof for the processed batch range.
     async fn submit_snark_proof(
@@ -161,4 +222,63 @@ pub trait PeekableProofClient {
         &self,
         batch_number: u32,
     ) -> anyhow::Result<Option<FailedFriProofPayload>>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `GET /status/` body as the server and mux emit it, extra fields included.
+    const STATUS_BODY: &str = r#"[
+      {
+        "fri_job": {"batch_number": 41, "vk_hash": "0xdead"},
+        "added_seconds_ago": 12,
+        "assigned_seconds_ago": 3,
+        "assigned_to_prover_id": "prover-a",
+        "current_attempt": 1
+      },
+      {
+        "fri_job": {"batch_number": 42, "vk_hash": "0xdead"},
+        "added_seconds_ago": 9,
+        "assigned_seconds_ago": null,
+        "assigned_to_prover_id": null,
+        "current_attempt": 2
+      }
+    ]"#;
+
+    fn classify(batch_number: u32, prover_name: &str) -> FriJobOwnership {
+        let entries: Vec<FriJobStatusPayload> =
+            serde_json::from_str(STATUS_BODY).expect("status body should parse");
+        FriJobOwnership::classify(entries, batch_number, prover_name)
+    }
+
+    #[test]
+    fn batch_held_by_us_keeps_proving() {
+        assert_eq!(classify(41, "prover-a"), FriJobOwnership::Ours);
+        assert!(!classify(41, "prover-a").is_lost());
+    }
+
+    #[test]
+    fn batch_held_by_another_prover_cancels() {
+        let ownership = classify(41, "prover-b");
+        assert_eq!(
+            ownership,
+            FriJobOwnership::Lost {
+                owner: "prover-a".to_string()
+            }
+        );
+        assert!(ownership.is_lost());
+    }
+
+    #[test]
+    fn unassigned_batch_keeps_proving() {
+        assert_eq!(classify(42, "prover-a"), FriJobOwnership::Unassigned);
+        assert!(!classify(42, "prover-a").is_lost());
+    }
+
+    #[test]
+    fn absent_batch_keeps_proving() {
+        assert_eq!(classify(99, "prover-a"), FriJobOwnership::Unknown);
+        assert!(!classify(99, "prover-a").is_lost());
+    }
 }
