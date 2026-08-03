@@ -179,11 +179,9 @@ impl FriJobOwnership {
     }
 }
 
-/// Who holds the batches of a SNARK run, as reported by `GET /SNARK/status/`.
+/// Who holds the batches of a SNARK run, per `GET /SNARK/status/`.
 ///
-/// Ownership is per batch, not per run — the sequencer assigns each batch of a
-/// picked run individually and keeps no grouping — so a run is lost as soon as
-/// any one of its batches is.
+/// Ownership is per batch, so a run is lost as soon as any one of its batches is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SnarkRunOwnership {
     /// Every batch of the range is present and still assigned to us.
@@ -201,10 +199,9 @@ impl SnarkRunOwnership {
         matches!(self, Self::Lost { .. })
     }
 
-    /// Reads off who holds each batch of `from..=to` in a `GET /SNARK/status/` body.
+    /// Who holds each batch of `from..=to`, given a `GET /SNARK/status/` body.
     ///
-    /// A single lost batch outranks any number of unassigned or absent ones: the
-    /// run cannot be submitted without it.
+    /// One lost batch outranks any number of unassigned or absent ones.
     fn classify(
         entries: Vec<SnarkJobStatusPayload>,
         from: u32,
@@ -266,14 +263,14 @@ pub trait ProofClient: Send + Sync {
 
     /// Read who currently holds `batch_number`, per `GET /status/`.
     ///
-    /// Errors are for the caller to treat as "keep proving" — an unreachable or
-    /// unreadable sequencer must never be read as a cancellation.
+    /// # Errors
+    /// Never a cancellation: the caller must read any error as "keep proving".
     async fn fri_job_ownership(&self, batch_number: u32) -> anyhow::Result<FriJobOwnership>;
 
     /// Read who currently holds the batches of `from..=to`, per `GET /SNARK/status/`.
     ///
-    /// The path is multiplexer-only; a raw sequencer answers 404, which the caller
-    /// treats as "keep proving" like any other failure.
+    /// # Errors
+    /// The path is multiplexer-only, so a raw sequencer answers 404 — keep proving.
     async fn snark_run_ownership(&self, from: u32, to: u32) -> anyhow::Result<SnarkRunOwnership>;
 
     /// Submit a SNARK proof for the processed batch range.

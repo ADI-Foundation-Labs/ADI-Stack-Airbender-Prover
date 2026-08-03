@@ -61,8 +61,8 @@ pub fn generate_verification_key(
 
 /// Links the run's FRI proofs into one, returning `None` if the run was cancelled.
 ///
-/// Every call into the prover returns here, so the flag is read once per linked
-/// batch and once per recursion step — the finest granularity this repo owns.
+/// Every prover call returns here, so the flag is read per linked batch and per
+/// recursion step.
 pub fn merge_fris(
     snark_proof_input: SnarkProofInputs,
     verifier_binary: &Vec<u32>,

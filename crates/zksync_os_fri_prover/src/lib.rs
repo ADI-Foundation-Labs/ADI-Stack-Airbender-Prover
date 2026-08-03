@@ -86,10 +86,9 @@ pub fn init_tracing() {
     FmtSubscriber::builder().with_env_filter(filter).init();
 }
 
-/// Proves `prover_input`, returning `None` if the job was cancelled at the phase boundary.
+/// Proves `prover_input`, returning `None` if the job was cancelled.
 ///
-/// Cancellation is checked between basic proving and recursion — the only boundary this
-/// repo owns, since the recursion levels loop inside `create_recursion_proofs`.
+/// The boundary between basic proving and recursion is the only one this repo owns.
 pub fn create_proof(
     prover_input: Vec<u32>,
     binary: &Vec<u32>,
