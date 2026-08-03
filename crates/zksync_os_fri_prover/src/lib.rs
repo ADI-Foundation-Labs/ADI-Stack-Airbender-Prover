@@ -76,8 +76,8 @@ pub struct Args {
     pub prover_name: String,
 
     /// How often to check whether this prover still owns the batch it is proving, in seconds.
-    /// `0` disables cancellation entirely.
-    #[arg(long, default_value = "1")]
+    /// `0`, the default, disables cancellation entirely; set it only behind mux.
+    #[arg(long, default_value = "0")]
     pub cancel_poll_interval_secs: u64,
 }
 
@@ -187,7 +187,10 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         .then(|| Duration::from_secs(args.cancel_poll_interval_secs));
     match cancel_poll_interval {
         Some(interval) => tracing::info!("Checking batch ownership every {}s", interval.as_secs()),
-        None => tracing::warn!("Batch ownership checks disabled, jobs will never be cancelled"),
+        None => tracing::warn!(
+            "Batch ownership checks disabled, jobs will never be cancelled; \
+             set --cancel-poll-interval-secs when running behind mux"
+        ),
     }
 
     let mut proof_count = 0;

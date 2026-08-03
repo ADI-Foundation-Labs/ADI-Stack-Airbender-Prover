@@ -84,8 +84,8 @@ enum Commands {
         #[arg(long, default_value = "unknown_prover")]
         prover_name: String,
         /// How often to check whether this prover still owns the run it is proving, in seconds.
-        /// `0` disables cancellation entirely.
-        #[arg(long, default_value = "1")]
+        /// `0`, the default, disables cancellation entirely; set it only behind mux.
+        #[arg(long, default_value = "0")]
         cancel_poll_interval_secs: u64,
     },
 }
@@ -175,6 +175,18 @@ fn main() {
                     request_timeout_secs
                 );
 
+                let cancel_poll_interval = (cancel_poll_interval_secs > 0)
+                    .then(|| Duration::from_secs(cancel_poll_interval_secs));
+                match cancel_poll_interval {
+                    Some(interval) => {
+                        tracing::info!("Checking run ownership every {}s", interval.as_secs())
+                    }
+                    None => tracing::warn!(
+                        "Run ownership checks disabled, jobs will never be cancelled; \
+                         set --cancel-poll-interval-secs when running behind mux"
+                    ),
+                }
+
                 tokio::select! {
                     result = run_linking_fri_snark(
                         binary_path,
@@ -183,8 +195,7 @@ fn main() {
                         trusted_setup_file,
                         iterations,
                         disable_zk,
-                        (cancel_poll_interval_secs > 0)
-                            .then(|| Duration::from_secs(cancel_poll_interval_secs)),
+                        cancel_poll_interval,
                     ) => {
                         tracing::info!("SNARK prover finished");
                         result.expect("SNARK prover finished with error");
