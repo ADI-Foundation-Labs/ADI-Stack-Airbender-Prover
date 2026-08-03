@@ -1,0 +1,98 @@
+name: Docker build and push
+
+# Deliberately independent of the CI workflow: a lint or test failure must never
+# block building an image to deploy.
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Extra tag to apply to the built images (optional)."
+        type: string
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # amd64 only: both images are CUDA builds and the provers run on x86 GPU hosts.
+  build:
+    name: Build ${{ matrix.component }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component:
+          - zksync-os-prover-fri
+          - zksync-os-prover-snark
+    steps:
+      - uses: actions/checkout@v4
+
+      # The CUDA devel image plus a release build of airbender overruns the
+      # runner's default free space.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/boost "${AGENT_TOOLSDIRECTORY:-}"
+          df -h /
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.component }}
+          tags: |
+            type=ref,event=tag
+            type=sha,prefix=,format=short,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=${{ inputs.tag_name }},enable=${{ inputs.tag_name != '' }}
+
+      # Only a build off main refreshes the cache, so parallel tag builds cannot
+      # race each other over the same ref.
+      - name: Define whether to save cache
+        id: cache-to
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "value=type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.component }}:buildcache,mode=max" >> "${GITHUB_OUTPUT}"
+          else
+            echo "value=" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/${{ matrix.component }}/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.component }}:buildcache
+          cache-to: ${{ steps.cache-to.outputs.value }}
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect \
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.component }}:${{ steps.meta.outputs.version }}
