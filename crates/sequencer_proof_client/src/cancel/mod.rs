@@ -25,6 +25,12 @@ impl CancelFlag {
         self.0.load(Ordering::Relaxed)
     }
 
+    /// The raw flag, for handing to the System prover's cancellable entry points.
+    #[must_use]
+    pub fn as_arc(&self) -> &Arc<AtomicBool> {
+        &self.0
+    }
+
     fn cancel(&self) {
         self.0.store(true, Ordering::Relaxed);
     }
