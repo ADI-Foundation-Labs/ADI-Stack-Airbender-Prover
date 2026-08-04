@@ -3,6 +3,7 @@ use std::time::Duration;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
+use zkos_wrapper::gpu_config::{MAX_DEVICE_ALLOCATION_ENV, parse_byte_size};
 use zksync_os_snark_prover::{
     generate_verification_key, init_tracing, metrics, run_linking_fri_snark,
 };
@@ -23,6 +24,14 @@ pub struct SetupOptions {
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
+    /// Cap the GPU device-memory pool used by zkos-wrapper / shivini. Accepts decimal
+    /// (`32G`, `32GB`) or binary (`32Gi`, `32GiB`) Kubernetes-style sizes; bare
+    /// integers are bytes. When unset, falls back to the
+    /// `ZKOS_WRAPPER_MAX_DEVICE_ALLOCATION` env var, then to shivini's default
+    /// (grab all free device memory at startup).
+    #[arg(long, global = true, value_parser = parse_byte_size)]
+    memory_limit: Option<usize>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -80,6 +89,24 @@ enum Commands {
 fn main() {
     init_tracing();
     let cli = Cli::parse();
+
+    // If --memory-limit was passed, expose it to zkos-wrapper via env var. The wrapper
+    // reads this at every ProverContext::create site, so no further plumbing is needed.
+    // An env var that's already set takes precedence (k8s Pod env wins, lets ops cap
+    // memory without having to touch the prover command line).
+    if let Some(bytes) = cli.memory_limit {
+        if std::env::var_os(MAX_DEVICE_ALLOCATION_ENV).is_none() {
+            // Safe: called before any threads spawn or any wrapper code runs.
+            std::env::set_var(MAX_DEVICE_ALLOCATION_ENV, bytes.to_string());
+        } else {
+            tracing::warn!(
+                "{MAX_DEVICE_ALLOCATION_ENV} is already set; --memory-limit value ignored"
+            );
+        }
+    }
+    if let Ok(raw) = std::env::var(MAX_DEVICE_ALLOCATION_ENV) {
+        tracing::info!("GPU device memory pool capped at {raw} (via {MAX_DEVICE_ALLOCATION_ENV})");
+    }
 
     match cli.command {
         Commands::GenerateKeys {
