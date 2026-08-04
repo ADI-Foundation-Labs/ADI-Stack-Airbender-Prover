@@ -3,7 +3,7 @@ use std::time::Duration;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
-use zkos_wrapper::gpu_config::{MAX_DEVICE_ALLOCATION_ENV, parse_byte_size};
+use zkos_wrapper::gpu_config::{parse_byte_size, MAX_DEVICE_ALLOCATION_ENV};
 use zksync_os_snark_prover::{
     generate_verification_key, init_tracing, metrics, run_linking_fri_snark,
 };
