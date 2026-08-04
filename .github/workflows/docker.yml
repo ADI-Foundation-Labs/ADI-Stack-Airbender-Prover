@@ -58,11 +58,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # `github.repository_owner` is mixed case and docker rejects uppercase in an
+      # image reference. metadata-action lowercases its own output; anything we
+      # build by hand has to be lowercased too.
+      - name: Resolve image name
+        id: image
+        run: echo "name=${REGISTRY}/$(tr '[:upper:]' '[:lower:]' <<< '${{ github.repository_owner }}')/${{ matrix.component }}" >> "${GITHUB_OUTPUT}"
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.component }}
+          images: ${{ steps.image.outputs.name }}
           tags: |
             type=ref,event=tag
             type=sha,prefix=,format=short,enable=${{ github.ref == 'refs/heads/main' }}
@@ -75,7 +82,7 @@ jobs:
         id: cache-to
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "value=type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.component }}:buildcache,mode=max" >> "${GITHUB_OUTPUT}"
+            echo "value=type=registry,ref=${{ steps.image.outputs.name }}:buildcache,mode=max" >> "${GITHUB_OUTPUT}"
           else
             echo "value=" >> "${GITHUB_OUTPUT}"
           fi
@@ -89,10 +96,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.component }}:buildcache
+          cache-from: type=registry,ref=${{ steps.image.outputs.name }}:buildcache
           cache-to: ${{ steps.cache-to.outputs.value }}
 
       - name: Inspect image
         run: |
           docker buildx imagetools inspect \
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.component }}:${{ steps.meta.outputs.version }}
+            ${{ steps.image.outputs.name }}:${{ steps.meta.outputs.version }}
