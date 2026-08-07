@@ -54,6 +54,16 @@ impl fmt::Display for Watched {
     }
 }
 
+impl Watched {
+    /// Names a lost batch, adding the run it belongs to when the job spans more than one.
+    fn name_lost(self, batch_number: u32) -> String {
+        match self {
+            Self::Fri(_) => format!("Batch {batch_number}"),
+            Self::Snark { .. } => format!("Batch {batch_number} of {self}"),
+        }
+    }
+}
+
 /// A batch taken by another prover, and who holds it now.
 struct Loss {
     batch_number: u32,
@@ -121,8 +131,8 @@ impl Watchdog<'_> {
                 owner,
             } = loss;
             tracing::warn!(
-                "Batch {batch_number} of {} is now assigned to prover {owner}, cancelling",
-                self.watched
+                "{} is now assigned to prover {owner}, cancelling",
+                self.watched.name_lost(batch_number)
             );
             self.flag.cancel();
             return;
