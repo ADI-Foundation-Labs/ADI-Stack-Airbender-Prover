@@ -39,3 +39,6 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 vise.workspace = true
 url.workspace = true
+
+[features]
+gpu = ["zkos_wrapper/gpu"]

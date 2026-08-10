@@ -10,7 +10,7 @@ use zkos_wrapper::{
     gpu::{compression::get_compression_setup, snark::gpu_create_snark_setup_data},
     BoojumWorker, CompressionVK, SnarkWrapperVK,
 };
-use zkos_wrapper::{prove, serialize_to_file, SnarkWrapperProof};
+use zkos_wrapper::{prove_cancellable, serialize_to_file, SnarkWrapperProof};
 use zksync_airbender_cli::prover_utils::{
     create_final_proofs_from_program_proof, create_proofs_internal, GpuSharedState,
 };
@@ -389,7 +389,7 @@ pub async fn run_inner(
 
             tracing::info!("SNARKifying proof");
             let start = Instant::now();
-            match prove(
+            match prove_cancellable(
                 one_fri_path.into_os_string().into_string().unwrap(),
                 output_dir.clone(),
                 Some(trusted_setup_file.clone()),
@@ -399,7 +399,11 @@ pub async fn run_inner(
                 // note that the API is use_zk, so we invert the disable_zk flag
                 !disable_zk,
             ) {
-                Ok(()) => {
+                Ok(None) => {
+                    tracing::info!("cancelled while SNARKifying proof, time stats: {}", stats);
+                    return None;
+                }
+                Ok(Some(())) => {
                     stats.observe_step(SnarkStage::Snark, start.elapsed());
 
                     stats.observe_full();
