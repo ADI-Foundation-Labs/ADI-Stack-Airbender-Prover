@@ -33,6 +33,8 @@ impl CancelFlag {
 
     fn cancel(&self) {
         self.0.store(true, Ordering::Relaxed);
+        #[cfg(feature = "gpu")]
+        zkos_wrapper::cancel::request();
     }
 }
 
@@ -165,6 +167,8 @@ pub fn with_watchdog<T>(
     proving: impl FnOnce(&CancelFlag) -> T,
 ) -> T {
     let flag = CancelFlag::default();
+    #[cfg(feature = "gpu")]
+    zkos_wrapper::cancel::arm();
 
     let Some(interval) = interval else {
         return proving(&flag);
