@@ -3,7 +3,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Context as _;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use clap::Parser;
@@ -14,9 +13,7 @@ use zksync_airbender_cli::prover_utils::{
     GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
-use zksync_sequencer_proof_client::{
-    FriJobInputs, ProofClient, SequencerEndpoint, SequencerProofClient,
-};
+use zksync_sequencer_proof_client::{ClientManager, FriJobInputs, ProofClient, SequencerEndpoint};
 
 use crate::metrics::FRI_PROVER_METRICS;
 
@@ -45,6 +42,11 @@ pub struct Args {
         default_value = "http://localhost:3124"
     )]
     pub sequencer_urls: Vec<SequencerEndpoint>,
+    /// Path to a file containing sequencer URLs (one per line).
+    /// When provided, takes precedence over --sequencer-urls.
+    /// The file is re-read if its modification time changes between proving rounds.
+    #[arg(long)]
+    pub sequencer_urls_file: Option<PathBuf>,
     /// Enable logging and use the logging-enabled binary
     /// This is not used in the FRI prover, but is kept for backward compatibility.
     #[arg(long)]
@@ -118,15 +120,12 @@ pub fn create_proof(
 pub async fn run(args: Args) -> anyhow::Result<()> {
     let timeout = Duration::from_secs(args.request_timeout_secs);
 
-    tracing::info!(
-        "Creating {} sequencer proof clients for urls: {:?}",
-        args.sequencer_urls.len(),
-        args.sequencer_urls
-    );
-
-    let clients =
-        SequencerProofClient::new_clients(args.sequencer_urls, args.prover_name, Some(timeout))
-            .context("failed to create sequencer proof clients")?;
+    let mut client_manager = ClientManager::new(
+        args.sequencer_urls_file,
+        args.sequencer_urls,
+        args.prover_name,
+        Some(timeout),
+    )?;
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
@@ -164,52 +163,54 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let retry_log_interval = Duration::from_secs(10);
 
     // Cycle through clients in round-robin fashion
-    for client in clients.iter().cycle() {
-        tracing::debug!("Polling sequencer: {}", client.sequencer_url());
+    loop {
+        client_manager.maybe_reload();
 
-        let proof_generated = run_inner(
-            client.as_ref(),
-            &binary,
-            args.circuit_limit,
-            &mut gpu_state,
-            args.path.clone(),
-            &supported_versions,
-        )
-        .await
-        .expect("Failed to run FRI prover");
+        for client in client_manager.clients() {
+            tracing::debug!("Polling sequencer: {}", client.sequencer_url());
 
-        if proof_generated {
-            proof_count += 1;
+            let proof_generated = run_inner(
+                client.as_ref(),
+                &binary,
+                args.circuit_limit,
+                &mut gpu_state,
+                args.path.clone(),
+                &supported_versions,
+            )
+            .await
+            .expect("Failed to run FRI prover");
 
-            // Check if we've reached the iteration limit
-            if let Some(max_proofs_generated) = args.iterations {
-                if proof_count >= max_proofs_generated {
-                    tracing::info!(
-                        "Reached maximum iterations ({max_proofs_generated}), exiting...",
-                    );
-                    return Ok(());
+            if proof_generated {
+                proof_count += 1;
+
+                // Check if we've reached the iteration limit
+                if let Some(max_proofs_generated) = args.iterations {
+                    if proof_count >= max_proofs_generated {
+                        tracing::info!(
+                            "Reached maximum iterations ({max_proofs_generated}), exiting...",
+                        );
+                        return Ok(());
+                    }
                 }
-            }
-            retrying_since = Instant::now();
-        } else {
-            // If no task was found, wait before trying again
-
-            if retrying_since.elapsed() >= retry_log_interval {
-                tracing::info!(
-                    "No pending batches to prove from sequencer for {} seconds",
-                    retrying_since.elapsed().as_secs()
-                );
                 retrying_since = Instant::now();
+            } else {
+                // If no task was found, wait before trying again
+
+                if retrying_since.elapsed() >= retry_log_interval {
+                    tracing::info!(
+                        "No pending batches to prove from sequencer for {} seconds",
+                        retrying_since.elapsed().as_secs()
+                    );
+                    retrying_since = Instant::now();
+                }
+                tracing::debug!(
+                    "No pending batches to prove from sequencer, retrying in {} ms",
+                    retry_interval.as_millis()
+                );
+                tokio::time::sleep(retry_interval).await;
             }
-            tracing::debug!(
-                "No pending batches to prove from sequencer, retrying in {} ms",
-                retry_interval.as_millis()
-            );
-            tokio::time::sleep(retry_interval).await;
         }
     }
-
-    Ok(())
 }
 
 pub async fn run_inner(

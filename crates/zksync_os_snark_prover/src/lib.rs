@@ -19,7 +19,7 @@ use zksync_airbender_execution_utils::{
     get_padded_binary, Machine, ProgramProof, RecursionStrategy, VerifierCircuitsIdentifiers,
     UNIVERSAL_CIRCUIT_VERIFIER,
 };
-use zksync_sequencer_proof_client::{ProofClient, SnarkProofInputs};
+use zksync_sequencer_proof_client::{ClientManager, ProofClient, SnarkProofInputs};
 
 use crate::metrics::{SnarkProofTimeStats, SnarkStage, SNARK_PROVER_METRICS};
 
@@ -155,7 +155,7 @@ pub fn compute_compression_vk(binary_path: String) -> CompressionVK {
 
 pub async fn run_linking_fri_snark(
     _binary_path: String,
-    clients: Vec<Box<dyn ProofClient + Send + Sync>>,
+    mut client_manager: ClientManager,
     output_dir: String,
     trusted_setup_file: String,
     iterations: Option<usize>,
@@ -165,9 +165,9 @@ pub async fn run_linking_fri_snark(
 
     tracing::info!(
         "Initializing SNARK prover with {} sequencer(s):",
-        clients.len()
+        client_manager.clients().len()
     );
-    for client in clients.iter() {
+    for client in client_manager.clients() {
         tracing::info!("  - {}", client.sequencer_url());
     }
 
@@ -192,41 +192,43 @@ pub async fn run_linking_fri_snark(
     let mut proof_count = 0;
 
     // Cycle through clients in round-robin fashion
-    for client in clients.iter().cycle() {
-        tracing::debug!("Polling sequencer: {}", client.sequencer_url());
+    loop {
+        client_manager.maybe_reload();
 
-        let proof_generated = run_inner(
-            client.as_ref(),
-            &verifier_binary,
-            output_dir.clone(),
-            trusted_setup_file.clone(),
-            #[cfg(feature = "gpu")]
-            &precomputations,
-            disable_zk,
-            &supported_versions,
-        )
-        .await
-        .expect("Failed to run SNARK prover");
+        for client in client_manager.clients() {
+            tracing::debug!("Polling sequencer: {}", client.sequencer_url());
 
-        if proof_generated {
-            proof_count += 1;
+            let proof_generated = run_inner(
+                client.as_ref(),
+                &verifier_binary,
+                output_dir.clone(),
+                trusted_setup_file.clone(),
+                #[cfg(feature = "gpu")]
+                &precomputations,
+                disable_zk,
+                &supported_versions,
+            )
+            .await
+            .expect("Failed to run SNARK prover");
 
-            if let Some(max_proofs_generated) = iterations {
-                if proof_count >= max_proofs_generated {
-                    tracing::info!(
-                        "Reached maximum iterations ({max_proofs_generated}), exiting..."
-                    );
-                    return Ok(());
+            if proof_generated {
+                proof_count += 1;
+
+                if let Some(max_proofs_generated) = iterations {
+                    if proof_count >= max_proofs_generated {
+                        tracing::info!(
+                            "Reached maximum iterations ({max_proofs_generated}), exiting..."
+                        );
+                        return Ok(());
+                    }
                 }
+            } else {
+                // If no task was found, wait before trying again
+                tracing::info!("No pending SNARK jobs from sequencer, retrying in 5s...");
+                tokio::time::sleep(Duration::from_secs(5)).await;
             }
-        } else {
-            // If no task was found, wait before trying again
-            tracing::info!("No pending SNARK jobs from sequencer, retrying in 5s...");
-            tokio::time::sleep(Duration::from_secs(5)).await;
         }
     }
-
-    Ok(())
 }
 
 pub async fn run_inner(

@@ -3,9 +3,11 @@
 
 pub mod sequencer_endpoint;
 pub mod sequencer_proof_client;
+pub mod sequencer_urls_file;
 
 pub use sequencer_endpoint::SequencerEndpoint;
 pub use sequencer_proof_client::SequencerProofClient;
+pub use sequencer_urls_file::ClientManager;
 
 use crate::metrics::SEQUENCER_CLIENT_METRICS;
 use async_trait::async_trait;
