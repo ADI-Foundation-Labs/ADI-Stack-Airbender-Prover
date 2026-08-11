@@ -400,7 +400,7 @@ pub async fn run_inner(
                 !disable_zk,
             ) {
                 Ok(None) => {
-                    tracing::info!("cancelled while SNARKifying proof, time stats: {}", stats);
+                    tracing::info!("cancelled while proving, time stats: {}", stats);
                     return None;
                 }
                 Ok(Some(())) => {
