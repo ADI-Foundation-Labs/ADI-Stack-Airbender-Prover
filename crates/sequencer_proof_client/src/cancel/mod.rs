@@ -166,9 +166,9 @@ pub fn with_watchdog<T>(
     interval: Option<Duration>,
     proving: impl FnOnce(&CancelFlag) -> T,
 ) -> T {
+    // No arming step: the wrapper's stage timers capture the cancel generation when the
+    // run starts, so a request left over from an earlier job cannot reach this one.
     let flag = CancelFlag::default();
-    #[cfg(feature = "gpu")]
-    zkos_wrapper::cancel::arm();
 
     let Some(interval) = interval else {
         return proving(&flag);
