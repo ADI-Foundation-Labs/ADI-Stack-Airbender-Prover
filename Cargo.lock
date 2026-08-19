@@ -445,8 +445,7 @@ dependencies = [
 [[package]]
 name = "boojum-cuda"
 version = "0.155.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39699de922ab1f1388b8ee03cfbcb73fa0e22fe42d9eb1aff74871bb6469ea2f"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git?tag=v0.155.2-b2#c03a6bd6f9e11830ad3767c9063f74bec4593c2b"
 dependencies = [
  "boojum",
  "cmake",
@@ -542,7 +541,7 @@ dependencies = [
 [[package]]
 name = "circuit_mersenne_field"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git?branch=feature%2Fcancellable_gpu_proving#90a0a560fcb5d65c1ada4b5210437f801c6a533d"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git?tag=v0.5.4-b2#b3e5da8537c926ca3750a35f67aedeee66efb67c"
 dependencies = [
  "boojum",
  "field",
@@ -1060,8 +1059,7 @@ dependencies = [
 [[package]]
 name = "era_cudart"
 version = "0.155.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e5bf69efd267a3a65033033d994156574656d0277a6fbe284ca499aaf5195a3"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git?tag=v0.155.2-b2#c03a6bd6f9e11830ad3767c9063f74bec4593c2b"
 dependencies = [
  "bitflags",
  "era_cudart_sys 0.155.2",
@@ -1080,8 +1078,7 @@ dependencies = [
 [[package]]
 name = "era_cudart_sys"
 version = "0.155.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "485a36609786334e488623fb5b73408c1010149e5c7c79973c6bf3f551825cb3"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git?tag=v0.155.2-b2#c03a6bd6f9e11830ad3767c9063f74bec4593c2b"
 dependencies = [
  "regex-lite",
 ]
@@ -1178,8 +1175,7 @@ dependencies = [
 [[package]]
 name = "fflonk-cuda"
 version = "0.155.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b018538405394dfafefc0e45a7d129d9cad3391ba5ff8bf0d79b903a8c20f6e7"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git?tag=v0.155.2-b2#c03a6bd6f9e11830ad3767c9063f74bec4593c2b"
 dependencies = [
  "bincode 1.3.3",
  "byteorder",
@@ -2068,7 +2064,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 [[package]]
 name = "lib-rv32-asm"
 version = "0.2.0"
-source = "git+https://github.com/shamatar/lib-rv32.git#d516e9d8359d8b2954d87b75adc0bfad92211c06"
+source = "git+https://github.com/shamatar/lib-rv32.git#869f82795f82314f17014a04fb6f2c31808e6b42"
 dependencies = [
  "lib-rv32-common",
  "log",
@@ -2077,7 +2073,7 @@ dependencies = [
 [[package]]
 name = "lib-rv32-common"
 version = "0.2.0"
-source = "git+https://github.com/shamatar/lib-rv32.git#d516e9d8359d8b2954d87b75adc0bfad92211c06"
+source = "git+https://github.com/shamatar/lib-rv32.git#869f82795f82314f17014a04fb6f2c31808e6b42"
 
 [[package]]
 name = "libc"
@@ -2801,8 +2797,7 @@ dependencies = [
 [[package]]
 name = "proof-compression"
 version = "0.155.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d37fc225d0f7be0a4782cda74747c4477c85a98516fba90991c334fb109465d0"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git?tag=v0.155.2-b2#c03a6bd6f9e11830ad3767c9063f74bec4593c2b"
 dependencies = [
  "anyhow",
  "bincode 1.3.3",
@@ -2814,6 +2809,7 @@ dependencies = [
  "serde_json",
  "shivini",
  "zksync-gpu-prover",
+ "zksync-prover-stages",
 ]
 
 [[package]]
@@ -3604,8 +3600,7 @@ dependencies = [
 [[package]]
 name = "shivini"
 version = "0.155.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35a99376a4c7546770c86ccdfcc022781bfb7b47a66d3bfaba3657a432c4b037"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git?tag=v0.155.2-b2#c03a6bd6f9e11830ad3767c9063f74bec4593c2b"
 dependencies = [
  "bincode 1.3.3",
  "boojum",
@@ -3619,6 +3614,8 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "smallvec",
+ "tracing",
+ "zksync-prover-stages",
 ]
 
 [[package]]
@@ -4963,7 +4960,7 @@ dependencies = [
 [[package]]
 name = "zkos-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git?branch=feature%2Fcancellable_gpu_proving#90a0a560fcb5d65c1ada4b5210437f801c6a533d"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git?tag=v0.5.4-b2#b3e5da8537c926ca3750a35f67aedeee66efb67c"
 dependencies = [
  "blake2_with_compression_verifier",
  "boojum",
@@ -4980,6 +4977,7 @@ dependencies = [
  "sha3 0.10.8",
  "shivini",
  "snark_wrapper",
+ "thiserror",
  "zksync-gpu-prover",
  "zksync_bellman",
 ]
@@ -4987,8 +4985,7 @@ dependencies = [
 [[package]]
 name = "zksync-gpu-ffi"
 version = "0.155.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e6097868c0cacb5d0e44dfe9c14d307985dae6e9ffe117954697d6a7390a027"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git?tag=v0.155.2-b2#c03a6bd6f9e11830ad3767c9063f74bec4593c2b"
 dependencies = [
  "cmake",
  "crossbeam",
@@ -5002,8 +4999,7 @@ dependencies = [
 [[package]]
 name = "zksync-gpu-prover"
 version = "0.155.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7214971d06f15edbd963a43feff5c54cda29687ff6e67fd09c430043158c6f10"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git?tag=v0.155.2-b2#c03a6bd6f9e11830ad3767c9063f74bec4593c2b"
 dependencies = [
  "bit-vec 0.6.3",
  "cfg-if",
@@ -5014,6 +5010,16 @@ dependencies = [
  "rand 0.4.6",
  "serde",
  "zksync-gpu-ffi",
+ "zksync-prover-stages",
+]
+
+[[package]]
+name = "zksync-prover-stages"
+version = "0.155.2"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git?tag=v0.155.2-b2#c03a6bd6f9e11830ad3767c9063f74bec4593c2b"
+dependencies = [
+ "thiserror",
+ "tracing",
 ]
 
 [[package]]

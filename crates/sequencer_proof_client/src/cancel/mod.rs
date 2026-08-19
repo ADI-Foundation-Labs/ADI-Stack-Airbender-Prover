@@ -33,6 +33,8 @@ impl CancelFlag {
 
     fn cancel(&self) {
         self.0.store(true, Ordering::Relaxed);
+        #[cfg(feature = "gpu")]
+        zkos_wrapper::cancel::request();
     }
 }
 
@@ -164,6 +166,8 @@ pub fn with_watchdog<T>(
     interval: Option<Duration>,
     proving: impl FnOnce(&CancelFlag) -> T,
 ) -> T {
+    // No arming step: the wrapper's stage timers capture the cancel generation when the
+    // run starts, so a request left over from an earlier job cannot reach this one.
     let flag = CancelFlag::default();
 
     let Some(interval) = interval else {

@@ -29,7 +29,7 @@ zksync_airbender_execution_utils = { package = "execution_utils", git = "https:/
 zksync_airbender_cli = { package = "cli", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git", branch = "feature/cancellable_gpu_proving" }
 
 # zkos-wrapper dependencies
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git", branch = "feature/cancellable_gpu_proving" }
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git", tag = "v0.5.4-b2" }
 
 # zksync-crypto-gpu dependencies
 proof-compression = "=0.155.2"
@@ -75,3 +75,16 @@ overflow-checks = true
 lto = false
 # This is needed for zksync-airbender crates to compile in a reasonable time for x86-64-unknown-linux-gnu
 overflow-checks = true
+
+# The crypto-gpu fork carries per-stage reporting and the cancellable proving entry
+# points. [patch] only applies at the build root, so this one block covers the whole
+# graph, zkos-wrapper's copies included.
+[patch.crates-io]
+boojum-cuda = { git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git", tag = "v0.155.2-b2" }
+era_cudart = { git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git", tag = "v0.155.2-b2" }
+era_cudart_sys = { git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git", tag = "v0.155.2-b2" }
+fflonk-cuda = { git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git", tag = "v0.155.2-b2" }
+proof-compression = { git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git", tag = "v0.155.2-b2" }
+shivini = { git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git", tag = "v0.155.2-b2" }
+zksync-gpu-ffi = { git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git", tag = "v0.155.2-b2" }
+zksync-gpu-prover = { git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Lib-Crypto-GPU.git", tag = "v0.155.2-b2" }
