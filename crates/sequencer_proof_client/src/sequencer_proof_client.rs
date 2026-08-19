@@ -253,7 +253,7 @@ impl ProofClient for SequencerProofClient {
     }
 
     async fn fri_job_ownership(&self, batch_number: u32) -> anyhow::Result<FriJobOwnership> {
-        let url = self.build_url("status/")?;
+        let url = self.build_url(&format!("status/?id={}", self.prover_name))?;
 
         let started_at = Instant::now();
 
@@ -287,7 +287,7 @@ impl ProofClient for SequencerProofClient {
     }
 
     async fn snark_run_ownership(&self, from: u32, to: u32) -> anyhow::Result<SnarkRunOwnership> {
-        let url = self.build_url("SNARK/status/")?;
+        let url = self.build_url(&format!("SNARK/status/?id={}", self.prover_name))?;
 
         let started_at = Instant::now();
 
@@ -464,5 +464,48 @@ mod tests {
 
         let url = client.sequencer_url();
         assert_eq!(url.as_str(), "http://localhost:3124/");
+    }
+
+    fn test_client() -> SequencerProofClient {
+        let endpoint = SequencerEndpoint::parse("http://localhost:3124").unwrap();
+        SequencerProofClient::new(endpoint, "prover-a".to_string(), None)
+            .expect("failed to create client")
+    }
+
+    /// `build_url` joins twice, and the second join is the one that could drop a query.
+    #[test]
+    fn built_urls_keep_the_query_string() {
+        let client = test_client();
+
+        assert_eq!(
+            client.build_url("status/?id=prover-a").unwrap().as_str(),
+            "http://localhost:3124/prover-jobs/v1/status/?id=prover-a"
+        );
+        assert_eq!(
+            client
+                .build_url("SNARK/status/?id=prover-a")
+                .unwrap()
+                .as_str(),
+            "http://localhost:3124/prover-jobs/v1/SNARK/status/?id=prover-a"
+        );
+    }
+
+    /// mux answers 400 without an id, because `/status/` carries no chain field and it
+    /// cannot tell whose batch a number refers to. A raw sequencer ignores the param.
+    #[test]
+    fn ownership_urls_name_the_prover() {
+        let client = test_client();
+
+        let fri = client
+            .build_url(&format!("status/?id={}", client.prover_name))
+            .unwrap();
+        let snark = client
+            .build_url(&format!("SNARK/status/?id={}", client.prover_name))
+            .unwrap();
+
+        assert_eq!(fri.query(), Some("id=prover-a"));
+        assert_eq!(snark.query(), Some("id=prover-a"));
+        assert_eq!(fri.path(), "/prover-jobs/v1/status/");
+        assert_eq!(snark.path(), "/prover-jobs/v1/SNARK/status/");
     }
 }
