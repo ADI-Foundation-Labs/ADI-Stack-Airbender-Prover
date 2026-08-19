@@ -10,8 +10,8 @@ use clap::Parser;
 use protocol_version::SupportedProtocolVersions;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zksync_airbender_cli::prover_utils::{
-    create_proofs_internal, create_recursion_proofs, load_binary_from_path, serialize_to_file,
-    GpuSharedState,
+    create_proofs_internal_cancellable, create_recursion_proofs_cancellable, load_binary_from_path,
+    serialize_to_file, GpuSharedState,
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
 use zksync_sequencer_proof_client::{
@@ -96,7 +96,7 @@ pub fn create_proof(
 ) -> Option<ProgramProof> {
     let mut timing = Some(0f64);
     let basic_started_at = Instant::now();
-    let (proof_list, proof_metadata) = create_proofs_internal(
+    let (proof_list, proof_metadata) = create_proofs_internal_cancellable(
         binary,
         prover_input,
         &Machine::Standard,
@@ -107,7 +107,8 @@ pub fn create_proof(
         #[cfg(not(feature = "gpu"))]
         &mut None,
         &mut timing, // timing info
-    );
+        Some(cancel.as_arc()),
+    )?;
     let basic_secs = basic_started_at.elapsed().as_secs_f64();
 
     if cancel.is_cancelled() {
@@ -116,7 +117,7 @@ pub fn create_proof(
     }
 
     let recursion_started_at = Instant::now();
-    let (recursion_proof_list, recursion_proof_metadata) = create_recursion_proofs(
+    let (recursion_proof_list, recursion_proof_metadata) = create_recursion_proofs_cancellable(
         proof_list,
         proof_metadata,
         // This is the default strategy (where recursion is done on reduced machine, and final step on 23 machine).
@@ -127,7 +128,8 @@ pub fn create_proof(
         #[cfg(not(feature = "gpu"))]
         &mut None,
         &mut timing, // timing info
-    );
+        Some(cancel.as_arc()),
+    )?;
 
     tracing::info!(
         "Proving phases: basic {basic_secs:.2}s, recursion {:.2}s",

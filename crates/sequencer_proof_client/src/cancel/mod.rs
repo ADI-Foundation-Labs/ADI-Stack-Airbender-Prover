@@ -25,6 +25,12 @@ impl CancelFlag {
         self.0.load(Ordering::Relaxed)
     }
 
+    /// The raw flag, for handing to the System prover's cancellable entry points.
+    #[must_use]
+    pub fn as_arc(&self) -> &Arc<AtomicBool> {
+        &self.0
+    }
+
     fn cancel(&self) {
         self.0.store(true, Ordering::Relaxed);
     }
@@ -44,6 +50,16 @@ impl fmt::Display for Watched {
         match self {
             Self::Fri(batch_number) => write!(f, "batch {batch_number}"),
             Self::Snark { from, to } => write!(f, "run {from}-{to}"),
+        }
+    }
+}
+
+impl Watched {
+    /// Names a lost batch, adding the run it belongs to when the job spans more than one.
+    fn name_lost(self, batch_number: u32) -> String {
+        match self {
+            Self::Fri(_) => format!("Batch {batch_number}"),
+            Self::Snark { .. } => format!("Batch {batch_number} of {self}"),
         }
     }
 }
@@ -115,8 +131,8 @@ impl Watchdog<'_> {
                 owner,
             } = loss;
             tracing::warn!(
-                "Batch {batch_number} of {} is now assigned to prover {owner}, cancelling",
-                self.watched
+                "{} is now assigned to prover {owner}, cancelling",
+                self.watched.name_lost(batch_number)
             );
             self.flag.cancel();
             return;
