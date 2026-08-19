@@ -142,6 +142,8 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 &mut gpu_state,
                 args.fri_path.clone(),
                 &supported_versions,
+                // Not deployed, so it does not run behind mux and has nothing to cancel.
+                None,
             )
             .await
             .expect("Failed to run FRI prover");
@@ -179,6 +181,8 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
                 &precomputations,
                 args.disable_zk,
                 &supported_versions,
+                // Not deployed, so it does not run behind mux and has nothing to cancel.
+                None,
             )
             .await
             .expect("Failed to run SNARK prover");

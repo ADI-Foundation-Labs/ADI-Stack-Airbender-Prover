@@ -15,7 +15,8 @@ use zksync_airbender_cli::prover_utils::{
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
 use zksync_sequencer_proof_client::{
-    FriJobInputs, ProofClient, SequencerEndpoint, SequencerProofClient,
+    with_watchdog, CancelFlag, FriJobInputs, ProofClient, SequencerEndpoint, SequencerProofClient,
+    Watched,
 };
 
 use crate::metrics::FRI_PROVER_METRICS;
@@ -73,6 +74,11 @@ pub struct Args {
     /// Name of the prover for identification in the sequencer's prover api
     #[arg(long, default_value = "unknown_prover")]
     pub prover_name: String,
+
+    /// How often to check whether this prover still owns the batch it is proving, in seconds.
+    /// `0`, the default, disables cancellation entirely; set it only behind mux.
+    #[arg(long, default_value = "0")]
+    pub cancel_poll_interval_secs: u64,
 }
 
 pub fn init_tracing() {
@@ -80,13 +86,16 @@ pub fn init_tracing() {
     FmtSubscriber::builder().with_env_filter(filter).init();
 }
 
+/// Proves `prover_input`, returning `None` if the job was cancelled.
 pub fn create_proof(
     prover_input: Vec<u32>,
     binary: &Vec<u32>,
     circuit_limit: usize,
     _gpu_state: &mut GpuSharedState,
-) -> ProgramProof {
+    cancel: &CancelFlag,
+) -> Option<ProgramProof> {
     let mut timing = Some(0f64);
+    let basic_started_at = Instant::now();
     let (proof_list, proof_metadata) = create_proofs_internal(
         binary,
         prover_input,
@@ -99,6 +108,14 @@ pub fn create_proof(
         &mut None,
         &mut timing, // timing info
     );
+    let basic_secs = basic_started_at.elapsed().as_secs_f64();
+
+    if cancel.is_cancelled() {
+        tracing::info!("Cancelled after basic proving, which took {basic_secs:.2}s");
+        return None;
+    }
+
+    let recursion_started_at = Instant::now();
     let (recursion_proof_list, recursion_proof_metadata) = create_recursion_proofs(
         proof_list,
         proof_metadata,
@@ -112,7 +129,15 @@ pub fn create_proof(
         &mut timing, // timing info
     );
 
-    ProgramProof::from_proof_list_and_metadata(&recursion_proof_list, &recursion_proof_metadata)
+    tracing::info!(
+        "Proving phases: basic {basic_secs:.2}s, recursion {:.2}s",
+        recursion_started_at.elapsed().as_secs_f64()
+    );
+
+    Some(ProgramProof::from_proof_list_and_metadata(
+        &recursion_proof_list,
+        &recursion_proof_metadata,
+    ))
 }
 
 pub async fn run(args: Args) -> anyhow::Result<()> {
@@ -155,6 +180,16 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         args.request_timeout_secs
     );
 
+    let cancel_poll_interval = (args.cancel_poll_interval_secs > 0)
+        .then(|| Duration::from_secs(args.cancel_poll_interval_secs));
+    match cancel_poll_interval {
+        Some(interval) => tracing::info!("Checking batch ownership every {}s", interval.as_secs()),
+        None => tracing::warn!(
+            "Batch ownership checks disabled, jobs will never be cancelled; \
+             set --cancel-poll-interval-secs when running behind mux"
+        ),
+    }
+
     let mut proof_count = 0;
 
     let mut retrying_since = Instant::now();
@@ -174,6 +209,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
             &mut gpu_state,
             args.path.clone(),
             &supported_versions,
+            cancel_poll_interval,
         )
         .await
         .expect("Failed to run FRI prover");
@@ -220,6 +256,7 @@ pub async fn run_inner(
     #[cfg(not(feature = "gpu"))] gpu_state: &mut GpuSharedState<'_>,
     path: Option<PathBuf>,
     supported_versions: &SupportedProtocolVersions,
+    cancel_poll_interval: Option<Duration>,
 ) -> anyhow::Result<bool> {
     let FriJobInputs {
         batch_number,
@@ -284,7 +321,22 @@ pub async fn run_inner(
         client.sequencer_url()
     );
 
-    let proof = create_proof(prover_input, binary, circuit_limit, gpu_state);
+    let proof = with_watchdog(
+        client,
+        Watched::Fri(batch_number),
+        cancel_poll_interval,
+        |cancel| create_proof(prover_input, binary, circuit_limit, gpu_state, cancel),
+    );
+
+    let Some(proof) = proof else {
+        tracing::warn!(
+            "Abandoned batch number {} after it was reassigned by sequencer {}",
+            batch_number,
+            client.sequencer_url()
+        );
+        FRI_PROVER_METRICS.cancelled_jobs.inc();
+        return Ok(false);
+    };
 
     tracing::info!(
         "Finished proving batch number {} with vk hash {}",

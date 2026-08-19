@@ -32,6 +32,8 @@ pub struct FriProverMetrics {
     pub latest_proven_batch: Gauge,
     /// Number of timeout errors when communicating with sequencer
     pub timeout_errors: Counter,
+    /// Number of jobs abandoned because the sequencer reassigned the batch
+    pub cancelled_jobs: Counter,
 }
 
 #[vise::register]

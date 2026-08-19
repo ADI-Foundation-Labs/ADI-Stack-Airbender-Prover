@@ -1,9 +1,13 @@
 // TODO: Currently disabled as it's not used anywhere. Needs a rework anyways.
 // pub mod file_based_proof_client;
 
+pub mod cancel;
+pub mod ownership;
 pub mod sequencer_endpoint;
 pub mod sequencer_proof_client;
 
+pub use cancel::{with_watchdog, CancelFlag, Watched};
+pub use ownership::{FriJobOwnership, SnarkRunOwnership};
 pub use sequencer_endpoint::SequencerEndpoint;
 pub use sequencer_proof_client::SequencerProofClient;
 
@@ -132,6 +136,18 @@ pub trait ProofClient: Send + Sync {
     /// Fetch the next SNARK job to prove.
     /// Returns `Ok(None)` if there's no job pending (204 No Content).
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>>;
+
+    /// Read who currently holds `batch_number`, per `GET /status/`.
+    ///
+    /// # Errors
+    /// Never a cancellation: the caller must read any error as "keep proving".
+    async fn fri_job_ownership(&self, batch_number: u32) -> anyhow::Result<FriJobOwnership>;
+
+    /// Read who currently holds the batches of `from..=to`, per `GET /SNARK/status/`.
+    ///
+    /// # Errors
+    /// The path is multiplexer-only, so a raw sequencer answers 404 — keep proving.
+    async fn snark_run_ownership(&self, from: u32, to: u32) -> anyhow::Result<SnarkRunOwnership>;
 
     /// Submit a SNARK proof for the processed batch range.
     async fn submit_snark_proof(

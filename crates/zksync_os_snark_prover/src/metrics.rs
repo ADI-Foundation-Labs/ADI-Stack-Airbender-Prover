@@ -42,6 +42,8 @@ pub struct SnarkProverMetrics {
     pub latest_proven_batch: Gauge,
     /// Number of timeout errors when communicating with sequencer
     pub timeout_errors: Counter,
+    /// Number of runs abandoned because the sequencer reassigned one of their batches
+    pub cancelled_jobs: Counter,
 }
 
 #[vise::register]
