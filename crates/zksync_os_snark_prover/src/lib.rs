@@ -8,7 +8,7 @@ use tracing_subscriber::{EnvFilter, FmtSubscriber};
 use zkos_wrapper::{
     generate_risk_wrapper_vk,
     gpu::{compression::get_compression_setup, snark::gpu_create_snark_setup_data},
-    BoojumWorker, CompressionVK, SnarkWrapperVK,
+    BoojumWorker, CompressionVK, SnarkWrapperVK, StageTimer,
 };
 use zkos_wrapper::{prove_cancellable, serialize_to_file, SnarkWrapperProof};
 use zksync_airbender_cli::prover_utils::{
@@ -156,9 +156,12 @@ pub fn merge_fris(
     Some(proof)
 }
 
+/// Both steps report onto their own stage timer and can stop on a cancel, so this returns
+/// rather than panicking — nothing enforces "no cancel has been requested yet" locally.
 #[cfg(feature = "gpu")]
-pub fn compute_compression_vk(binary_path: String) -> CompressionVK {
+pub fn compute_compression_vk(binary_path: String) -> anyhow::Result<CompressionVK> {
     let worker = BoojumWorker::new();
+    let mut stages = StageTimer::new();
 
     let risc_wrapper_vk = generate_risk_wrapper_vk(
         Some(binary_path),
@@ -166,10 +169,12 @@ pub fn compute_compression_vk(binary_path: String) -> CompressionVK {
         RecursionStrategy::UseReducedLog23Machine,
         &worker,
     )
-    .unwrap();
+    .map_err(|err| anyhow::anyhow!("failed to generate the risc wrapper vk: {err}"))?;
 
-    let (_, compression_vk, _) = get_compression_setup(&worker, risc_wrapper_vk);
-    compression_vk
+    let (_, compression_vk, _) = get_compression_setup(&worker, risc_wrapper_vk, &mut stages)?;
+    stages.finish();
+
+    Ok(compression_vk)
 }
 
 pub async fn run_linking_fri_snark(
@@ -204,7 +209,7 @@ pub async fn run_linking_fri_snark(
     #[cfg(feature = "gpu")]
     let precomputations = {
         tracing::info!("Computing SNARK precomputations");
-        let compression_vk = compute_compression_vk(_binary_path);
+        let compression_vk = compute_compression_vk(_binary_path)?;
         let precomputations = gpu_create_snark_setup_data(&compression_vk, &trusted_setup_file);
         tracing::info!("Finished computing SNARK precomputations");
         precomputations
