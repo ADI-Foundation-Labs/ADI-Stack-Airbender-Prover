@@ -25,6 +25,7 @@ pub struct SequencerProofClient {
     client: reqwest::Client,
     endpoint: Url,
     prover_name: String,
+    supported_vk_hashes: Vec<String>,
 }
 
 impl SequencerProofClient {
@@ -34,6 +35,9 @@ impl SequencerProofClient {
     /// * `endpoint` - The sequencer endpoint (URL + optional credentials)
     /// * `prover_name` - The name of the prover (used for identification in sequencer prover api)
     /// * `timeout` - Optional timeout for requests (None defaults to 2 seconds)
+    /// * `supported_vk_hashes` - VK hashes this prover supports; sent on pick requests so the
+    ///   sequencer only assigns jobs of these versions. Empty means no declaration - the
+    ///   sequencer will offer jobs of any version.
     ///
     /// # Errors
     /// * if building the reqwest client fails
@@ -41,6 +45,7 @@ impl SequencerProofClient {
         endpoint: SequencerEndpoint,
         prover_name: String,
         timeout: Option<Duration>,
+        supported_vk_hashes: Vec<String>,
     ) -> anyhow::Result<Self> {
         let mut headers = HeaderMap::new();
 
@@ -71,6 +76,7 @@ impl SequencerProofClient {
             client,
             endpoint: endpoint.url,
             prover_name,
+            supported_vk_hashes,
         })
     }
 
@@ -80,6 +86,9 @@ impl SequencerProofClient {
     /// * `endpoints` - A vector of sequencer endpoints
     /// * `prover_name` - The name of the prover (used for identification in sequencer prover api)
     /// * `timeout` - Optional timeout for requests (None defaults to 2 seconds)
+    /// * `supported_vk_hashes` - VK hashes this prover supports; sent on pick requests so the
+    ///   sequencer only assigns jobs of these versions. Empty means no declaration - the
+    ///   sequencer will offer jobs of any version.
     ///
     /// # Errors
     /// * if there are no endpoints provided (empty vector)
@@ -88,6 +97,7 @@ impl SequencerProofClient {
         endpoints: Vec<SequencerEndpoint>,
         prover_name: String,
         timeout: Option<Duration>,
+        supported_vk_hashes: Vec<String>,
     ) -> anyhow::Result<Vec<Box<dyn ProofClient + Send + Sync>>> {
         if endpoints.is_empty() {
             return Err(anyhow!("No sequencer endpoints provided"));
@@ -98,10 +108,15 @@ impl SequencerProofClient {
             .enumerate()
             .map(|(i, endpoint)| {
                 let url = endpoint.url.clone();
-                let client = SequencerProofClient::new(endpoint, prover_name.clone(), timeout)
-                    .with_context(|| {
-                        format!("Failed to create sequencer client #{i} at url {url:?}")
-                    })?;
+                let client = SequencerProofClient::new(
+                    endpoint,
+                    prover_name.clone(),
+                    timeout,
+                    supported_vk_hashes.clone(),
+                )
+                .with_context(|| {
+                    format!("Failed to create sequencer client #{i} at url {url:?}")
+                })?;
 
                 Ok(Box::new(client) as Box<dyn ProofClient + Send + Sync>)
             })
@@ -143,6 +158,21 @@ impl SequencerProofClient {
             .with_context(|| format!("Failed to build URL for path: {path}"))?;
         Ok(url)
     }
+
+    /// Query string for pick requests: prover id plus, if declared, the supported VK hashes.
+    /// Sequencers aware of `supported_vk_hashes` only assign jobs of these versions;
+    /// older sequencers ignore the parameter.
+    fn pick_query(&self) -> String {
+        if self.supported_vk_hashes.is_empty() {
+            format!("id={}", self.prover_name)
+        } else {
+            format!(
+                "id={}&supported_vk_hashes={}",
+                self.prover_name,
+                self.supported_vk_hashes.join(",")
+            )
+        }
+    }
 }
 
 #[async_trait]
@@ -152,7 +182,7 @@ impl ProofClient for SequencerProofClient {
     }
 
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
-        let url = self.build_url(&format!("FRI/pick?id={}", self.prover_name))?;
+        let url = self.build_url(&format!("FRI/pick?{}", self.pick_query()))?;
 
         let started_at = Instant::now();
 
@@ -224,7 +254,7 @@ impl ProofClient for SequencerProofClient {
     }
 
     async fn pick_snark_job(&self) -> anyhow::Result<Option<SnarkProofInputs>> {
-        let url = self.build_url(&format!("SNARK/pick?id={}", self.prover_name))?;
+        let url = self.build_url(&format!("SNARK/pick?{}", self.pick_query()))?;
 
         let started_at = Instant::now();
 
@@ -445,7 +475,7 @@ mod tests {
     fn test_client_strips_credentials() {
         let endpoint = SequencerEndpoint::parse("http://user:password123@localhost:3124").unwrap();
 
-        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None)
+        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None, vec![])
             .expect("failed to create client");
 
         // URL should be clean (no credentials)
@@ -456,10 +486,36 @@ mod tests {
     }
 
     #[test]
+    fn test_pick_query_without_supported_vk_hashes() {
+        let endpoint = SequencerEndpoint::parse("http://localhost:3124").unwrap();
+        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None, vec![])
+            .expect("failed to create client");
+
+        assert_eq!(client.pick_query(), "id=test_prover");
+    }
+
+    #[test]
+    fn test_pick_query_with_supported_vk_hashes() {
+        let endpoint = SequencerEndpoint::parse("http://localhost:3124").unwrap();
+        let client = SequencerProofClient::new(
+            endpoint,
+            "test_prover".to_string(),
+            None,
+            vec!["0xaaaa".to_string(), "0xbbbb".to_string()],
+        )
+        .expect("failed to create client");
+
+        assert_eq!(
+            client.pick_query(),
+            "id=test_prover&supported_vk_hashes=0xaaaa,0xbbbb"
+        );
+    }
+
+    #[test]
     fn test_client_without_credentials() {
         let endpoint = SequencerEndpoint::parse("http://localhost:3124").unwrap();
 
-        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None)
+        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None, vec![])
             .expect("failed to create client");
 
         let url = client.sequencer_url();
@@ -468,8 +524,31 @@ mod tests {
 
     fn test_client() -> SequencerProofClient {
         let endpoint = SequencerEndpoint::parse("http://localhost:3124").unwrap();
-        SequencerProofClient::new(endpoint, "prover-a".to_string(), None)
+        SequencerProofClient::new(endpoint, "prover-a".to_string(), None, vec![])
             .expect("failed to create client")
+    }
+
+    /// A pick URL carries two parameters, and `build_url`'s second join is the one that
+    /// could drop them.
+    #[test]
+    fn built_pick_urls_keep_every_parameter() {
+        let endpoint = SequencerEndpoint::parse("http://localhost:3124").unwrap();
+        let client = SequencerProofClient::new(
+            endpoint,
+            "prover-a".to_string(),
+            None,
+            vec!["0xaaaa".to_string(), "0xbbbb".to_string()],
+        )
+        .expect("failed to create client");
+
+        let url = client
+            .build_url(&format!("FRI/pick?{}", client.pick_query()))
+            .expect("failed to build url");
+
+        assert_eq!(
+            url.as_str(),
+            "http://localhost:3124/prover-jobs/v1/FRI/pick?id=prover-a&supported_vk_hashes=0xaaaa,0xbbbb"
+        );
     }
 
     /// `build_url` joins twice, and the second join is the one that could drop a query.

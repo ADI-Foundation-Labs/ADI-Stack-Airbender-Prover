@@ -11,7 +11,7 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 #rust-version = "1.88"
-version = "0.7.0"
+version = "0.8.2"
 authors = ["ADI Foundation"]
 homepage = "https://adi.foundation/"
 repository = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-Prover/"
@@ -25,11 +25,11 @@ zksync_sequencer_proof_client = { path = "crates/sequencer_proof_client" }
 protocol_version = { path = "crates/protocol_version" }
 
 # zksync-airbender dependencies
-zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git", branch = "feature/cancellable_gpu_proving" }
-zksync_airbender_cli = { package = "cli", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git", branch = "feature/cancellable_gpu_proving" }
+zksync_airbender_execution_utils = { package = "execution_utils", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git", tag = "v0.5.2-b1" }
+zksync_airbender_cli = { package = "cli", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git", tag = "v0.5.2-b1" }
 
 # zkos-wrapper dependencies
-zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git", tag = "v0.5.4-b2" }
+zkos_wrapper = { package = "zkos-wrapper", git = "https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git", tag = "v0.5.5-b" }
 
 # zksync-crypto-gpu dependencies
 proof-compression = "=0.155.2"
@@ -42,7 +42,8 @@ bellman = { package = "zksync_bellman", version = "=0.32.5" }
 crypto_codegen = { package = "zksync_solidity_vk_codegen", version = "=0.32.5" }
 
 # external dependencies
-anyhow = "1.0"
+anyhow = "1.0.103"
+memmap2 = "0.9.11"
 async-trait = "0.1"
 base64 = "0.22.1"
 bincode = { version = "2", features = ["serde"] }

@@ -10,6 +10,10 @@ license.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[[bin]]
+name = "zksync-os-prover-service"
+path = "src/main.rs"
+
 [dependencies]
 protocol_version.workspace = true
 zksync_sequencer_proof_client.workspace = true

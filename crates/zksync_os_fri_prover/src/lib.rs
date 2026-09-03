@@ -151,18 +151,22 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         args.sequencer_urls
     );
 
-    let clients =
-        SequencerProofClient::new_clients(args.sequencer_urls, args.prover_name, Some(timeout))
-            .context("failed to create sequencer proof clients")?;
+    let supported_versions = SupportedProtocolVersions::default();
+    tracing::info!("{:#?}", supported_versions);
+
+    let clients = SequencerProofClient::new_clients(
+        args.sequencer_urls,
+        args.prover_name,
+        Some(timeout),
+        supported_versions.vk_hashes(),
+    )
+    .context("failed to create sequencer proof clients")?;
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         manifest_path
     } else {
         ".".to_string()
     };
-
-    let supported_versions = SupportedProtocolVersions::default();
-    tracing::info!("{:#?}", supported_versions);
 
     let binary_path = args
         .app_bin_path

@@ -118,9 +118,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.100"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
+checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "arr_macro"
@@ -235,7 +235,7 @@ checksum = "55248b47b0caf0546f7988906588779981c43bb1bc9d0c44087278f80cdb44ba"
 [[package]]
 name = "bigint_with_control"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "prover",
  "serde",
@@ -348,7 +348,7 @@ dependencies = [
 [[package]]
 name = "blake2_with_compression"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "prover",
  "serde",
@@ -359,7 +359,7 @@ dependencies = [
 [[package]]
 name = "blake2_with_compression_verifier"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "field",
  "unroll",
@@ -380,7 +380,7 @@ dependencies = [
 [[package]]
 name = "blake2s_u32"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "unroll",
 ]
@@ -430,7 +430,7 @@ dependencies = [
  "lazy_static",
  "num-modular",
  "num_cpus",
- "rand 0.8.5",
+ "rand 0.8.6",
  "rayon",
  "serde",
  "sha2 0.10.9",
@@ -482,9 +482,9 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "bytes"
-version = "1.10.1"
+version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
+checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "cc"
@@ -505,7 +505,7 @@ checksum = "2fd1289c04a9ea8cb22300a459a72a385d7c73d3259e2ed7dcb2af674838cfa9"
 [[package]]
 name = "circuit_common"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "fft",
  "field",
@@ -541,11 +541,11 @@ dependencies = [
 [[package]]
 name = "circuit_mersenne_field"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git?tag=v0.5.4-b2#b3e5da8537c926ca3750a35f67aedeee66efb67c"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git?tag=v0.5.5-b#bae60f685cb16903c6df21878147f417f39706ca"
 dependencies = [
  "boojum",
  "field",
- "rand 0.8.5",
+ "rand 0.8.6",
 ]
 
 [[package]]
@@ -591,7 +591,7 @@ checksum = "b94f61472cee1439c0b966b47e3aca9ae07e45d070759512cd390ea2bebc6675"
 [[package]]
 name = "cli"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "base64 0.21.7",
  "blake2s_u32",
@@ -772,9 +772,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-epoch"
-version = "0.9.18"
+version = "0.9.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -835,7 +835,7 @@ dependencies = [
 [[package]]
 name = "cs"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "arrayvec 0.7.6",
  "bincode 1.3.3",
@@ -1123,7 +1123,7 @@ dependencies = [
 [[package]]
 name = "execution_utils"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "clap",
  "risc_v_simulator",
@@ -1192,7 +1192,7 @@ dependencies = [
 [[package]]
 name = "fft"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "field",
  "itertools 0.14.0",
@@ -1206,9 +1206,9 @@ dependencies = [
 [[package]]
 name = "field"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
- "rand 0.9.2",
+ "rand 0.9.4",
  "seq-macro",
  "serde",
 ]
@@ -1216,7 +1216,7 @@ dependencies = [
 [[package]]
 name = "final_reduced_risc_v_machine"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "circuit_common",
  "prover",
@@ -1228,7 +1228,7 @@ dependencies = [
 [[package]]
 name = "final_reduced_risc_v_machine_verifier"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "field",
  "unroll",
@@ -1254,7 +1254,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "835c052cb0c08c1acf6ffd71c022172e18723949c8282f2b9f27efbc51e64534"
 dependencies = [
  "byteorder",
- "rand 0.8.5",
+ "rand 0.8.6",
  "rustc-hex",
  "static_assertions",
 ]
@@ -1498,7 +1498,7 @@ checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
 [[package]]
 name = "gpu_prover"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "blake2s_u32",
  "cmake",
@@ -1903,9 +1903,9 @@ dependencies = [
 
 [[package]]
 name = "inferno"
-version = "0.12.3"
+version = "0.12.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e96d2465363ed2d81857759fc864cf6bb7997f79327aec028d65bd7989393685"
+checksum = "0c460d4fa06223667240720ab69a8045133755ae6dfbe100cf481b95e3a014f1"
 dependencies = [
  "ahash",
  "clap",
@@ -2048,9 +2048,9 @@ dependencies = [
 
 [[package]]
 name = "keccak"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecc2af9a1119c51f12a14607e783cb977bde58bc069ff0c3da1095e635d70654"
+checksum = "cb26cec98cce3a3d96cbb7bced3c4b16e3d13f27ec56dbd62cbc8f39cfb9d653"
 dependencies = [
  "cpufeatures",
 ]
@@ -2112,7 +2112,7 @@ checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 [[package]]
 name = "machine_without_signed_mul_div"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "circuit_common",
  "prover",
@@ -2138,9 +2138,9 @@ checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
 
 [[package]]
 name = "memmap2"
-version = "0.9.8"
+version = "0.9.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "843a98750cd611cc2965a8213b53b43e715f13c37a9e096c6408e69990961db7"
+checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
 dependencies = [
  "libc",
 ]
@@ -2197,7 +2197,7 @@ checksum = "72ef4a56884ca558e5ddb05a1d1e7e1bfd9a68d9ed024c21704cc98872dae1bb"
 [[package]]
 name = "non_determinism_source"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 
 [[package]]
 name = "nu-ansi-term"
@@ -2634,11 +2634,11 @@ dependencies = [
 [[package]]
 name = "poseidon2"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "field",
  "non_determinism_source",
- "rand 0.9.2",
+ "rand 0.9.4",
  "unroll",
 ]
 
@@ -2814,12 +2814,12 @@ dependencies = [
 
 [[package]]
 name = "protocol_version"
-version = "0.7.0"
+version = "0.8.2"
 
 [[package]]
 name = "prover"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "bincode 1.3.3",
  "bit-set",
@@ -2848,7 +2848,7 @@ dependencies = [
 [[package]]
 name = "prover_examples"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "bincode 1.3.3",
  "cs",
@@ -2872,9 +2872,9 @@ checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
 
 [[package]]
 name = "quick-xml"
-version = "0.37.5"
+version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
+checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
 dependencies = [
  "memchr",
 ]
@@ -2924,9 +2924,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.8.5"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
+checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
 dependencies = [
  "libc",
  "rand_chacha 0.3.1",
@@ -2935,9 +2935,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.9.2"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6db2770f06117d490610c7488547d543617b21bfa07796d7a12f6f1bd53850d1"
+checksum = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea"
 dependencies = [
  "rand_chacha 0.9.0",
  "rand_core 0.9.3",
@@ -3037,7 +3037,7 @@ dependencies = [
 [[package]]
 name = "reduced_risc_v_log_23_machine"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "circuit_common",
  "prover",
@@ -3049,7 +3049,7 @@ dependencies = [
 [[package]]
 name = "reduced_risc_v_log_23_machine_verifier"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "field",
  "unroll",
@@ -3059,7 +3059,7 @@ dependencies = [
 [[package]]
 name = "reduced_risc_v_machine"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "circuit_common",
  "prover",
@@ -3240,7 +3240,7 @@ checksum = "57b0b88a509053cbfd535726dcaaceee631313cef981266119527a1d110f6d2b"
 [[package]]
 name = "risc_v_cycles"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "circuit_common",
  "prover",
@@ -3252,7 +3252,7 @@ dependencies = [
 [[package]]
 name = "risc_v_simulator"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "addr2line 0.22.0",
  "blake2s_u32",
@@ -3262,7 +3262,7 @@ dependencies = [
  "memmap2",
  "object 0.37.3",
  "poseidon2",
- "rand 0.9.2",
+ "rand 0.9.4",
  "ringbuffer",
  "ruint",
  "serde",
@@ -3514,7 +3514,7 @@ dependencies = [
 [[package]]
 name = "setups"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "bigint_with_control",
  "blake2_with_compression",
@@ -3611,7 +3611,7 @@ dependencies = [
  "era_cudart_sys 0.155.2",
  "hex",
  "itertools 0.13.0",
- "rand 0.8.5",
+ "rand 0.8.6",
  "serde",
  "smallvec",
  "tracing",
@@ -3849,9 +3849,9 @@ dependencies = [
 
 [[package]]
 name = "thin-vec"
-version = "0.2.14"
+version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "144f754d318415ac792f9d69fc87abbbfc043ce2ef041c60f16ad828f638717d"
+checksum = "b0f7e269b48f0a7dd0146680fa24b50cc67fc0373f086a5b2f99bd084639b482"
 
 [[package]]
 name = "thiserror"
@@ -4069,7 +4069,7 @@ checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 [[package]]
 name = "trace_and_split"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "prover",
  "serde",
@@ -4081,7 +4081,7 @@ dependencies = [
 [[package]]
 name = "trace_holder"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "field",
  "worker",
@@ -4152,7 +4152,7 @@ dependencies = [
 [[package]]
 name = "transcript"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "blake2s_u32",
  "unroll",
@@ -4315,7 +4315,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 [[package]]
 name = "verifier_common"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "blake2s_u32",
  "cs",
@@ -4331,7 +4331,7 @@ dependencies = [
 [[package]]
 name = "verifier_generator"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "proc-macro-error2",
  "proc-macro2 1.0.101",
@@ -4764,7 +4764,7 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 [[package]]
 name = "worker"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?branch=feature%2Fcancellable_gpu_proving#6567b15db868f4adfb860a580af9204b1b92352a"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-Airbender-System.git?tag=v0.5.2-b1#01d34297bb168a9f5804885cbdc854bbcbb0e9d8"
 dependencies = [
  "num_cpus",
  "rayon",
@@ -4930,7 +4930,7 @@ dependencies = [
  "itertools 0.10.5",
  "lazy_static",
  "rand 0.4.6",
- "rand 0.8.5",
+ "rand 0.8.6",
  "seq-macro",
  "serde",
  "serde_json",
@@ -4960,7 +4960,7 @@ dependencies = [
 [[package]]
 name = "zkos-wrapper"
 version = "0.1.0"
-source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git?tag=v0.5.4-b2#b3e5da8537c926ca3750a35f67aedeee66efb67c"
+source = "git+https://github.com/ADI-Foundation-Labs/ADI-Stack-zkOS-Wrapper.git?tag=v0.5.5-b#bae60f685cb16903c6df21878147f417f39706ca"
 dependencies = [
  "blake2_with_compression_verifier",
  "boojum",
@@ -5087,7 +5087,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_os_fri_prover"
-version = "0.7.0"
+version = "0.8.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -5110,7 +5110,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_os_prover_service"
-version = "0.7.0"
+version = "0.8.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -5134,7 +5134,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_os_snark_prover"
-version = "0.7.0"
+version = "0.8.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -5170,7 +5170,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_sequencer_proof_client"
-version = "0.7.0"
+version = "0.8.2"
 dependencies = [
  "anyhow",
  "async-trait",
