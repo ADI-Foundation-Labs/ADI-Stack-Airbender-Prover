@@ -42,12 +42,14 @@ impl Cli {
 
     /// Return sequencer client from CLI params. To be called only after `Cli::init()`.
     fn sequencer_client(&self) -> anyhow::Result<SequencerProofClient> {
+        // The CLI client declares no supported versions - the sequencer offers it any job.
         SequencerProofClient::new(
             self.url
                 .clone()
                 .expect("called sequencer_client() before init()"),
             "cli_client".to_string(),
             None,
+            vec![],
         )
     }
 }

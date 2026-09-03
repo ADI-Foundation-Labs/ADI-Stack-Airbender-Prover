@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
+use protocol_version::SupportedProtocolVersions;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 use zkos_wrapper::gpu_config::{parse_byte_size, MAX_DEVICE_ALLOCATION_ENV};
@@ -166,9 +167,14 @@ fn main() {
                     sequencer_urls.len(),
                     sequencer_urls
                 );
-                let clients =
-                    SequencerProofClient::new_clients(sequencer_urls, prover_name, Some(timeout))
-                        .expect("failed to create sequencer proof clients");
+                let supported_versions = SupportedProtocolVersions::default();
+                let clients = SequencerProofClient::new_clients(
+                    sequencer_urls,
+                    prover_name,
+                    Some(timeout),
+                    supported_versions.vk_hashes(),
+                )
+                .expect("failed to create sequencer proof clients");
 
                 tracing::info!(
                     "Starting zksync_os_snark_prover with request timeout of {}s",

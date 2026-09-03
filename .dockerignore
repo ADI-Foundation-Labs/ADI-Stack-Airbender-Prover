@@ -3,4 +3,5 @@
 !Cargo*
 !rust-toolchain.toml
 !multiblock_batch.bin
+!docker/zksync-airbender-prover/entrypoint.sh
 !docker/zksync-os-prover-snark/entrypoint.sh
