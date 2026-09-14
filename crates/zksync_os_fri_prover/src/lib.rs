@@ -146,6 +146,35 @@ pub fn create_proof(
     ))
 }
 
+/// Logs the cancellation posture the prover starts with: the cadence, or why nothing polls.
+fn log_cancellation_posture(
+    clients: &[Box<dyn ProofClient + Send + Sync>],
+    interval: Option<Duration>,
+    request_timeout_secs: u64,
+) {
+    let Some(interval) = interval else {
+        tracing::warn!(
+            "Batch ownership checks disabled, jobs will never be cancelled; \
+             set --cancel-poll-interval-secs when running behind mux"
+        );
+        return;
+    };
+
+    if !clients.iter().any(|client| client.supports_cancellation()) {
+        tracing::warn!(
+            "No sequencer URL answered as a mux, so batch ownership checks will \
+             not run despite --cancel-poll-interval-secs"
+        );
+        return;
+    }
+
+    tracing::info!(
+        "Checking batch ownership every {}s, timing out each check after {}s",
+        interval.as_secs(),
+        request_timeout_secs
+    );
+}
+
 pub async fn run(args: Args) -> anyhow::Result<()> {
     let timeouts = ClientTimeouts::new(args.request_timeout_secs, args.cancel_request_timeout_secs);
 
@@ -164,6 +193,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         timeouts,
         supported_versions.vk_hashes(),
     )
+    .await
     .context("failed to create sequencer proof clients")?;
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
@@ -192,20 +222,10 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
 
     let cancel_poll_interval = (args.cancel_poll_interval_secs > 0)
         .then(|| Duration::from_secs(args.cancel_poll_interval_secs));
-    cancel_poll_interval.map_or_else(
-        || {
-            tracing::warn!(
-                "Batch ownership checks disabled, jobs will never be cancelled; \
-                 set --cancel-poll-interval-secs when running behind mux"
-            );
-        },
-        |interval| {
-            tracing::info!(
-                "Checking batch ownership every {}s, timing out each check after {}s",
-                interval.as_secs(),
-                args.cancel_request_timeout_secs
-            );
-        },
+    log_cancellation_posture(
+        &clients,
+        cancel_poll_interval,
+        args.cancel_request_timeout_secs,
     );
 
     let mut proof_count = 0;

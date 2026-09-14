@@ -123,6 +123,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
         ClientTimeouts::default(),
         supported_versions.vk_hashes(),
     )
+    .await
     .context("failed to create sequencer proof clients")?;
 
     let manifest_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {

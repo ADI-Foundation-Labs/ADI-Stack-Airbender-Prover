@@ -1,27 +1,34 @@
-use std::sync::atomic::AtomicUsize;
+use std::sync::{atomic::AtomicUsize, Mutex};
 
 use async_trait::async_trait;
 use url::Url;
 use zkos_wrapper::SnarkWrapperProof;
 
 use super::*;
-use crate::{FriJobInputs, L2BatchNumber, SnarkProofInputs};
+use crate::{Backend, FriJobInputs, L2BatchNumber, SnarkProofInputs};
 
 /// Answers ownership checks from a fixed script, one entry per poll.
 struct ScriptedClient {
     url: Url,
+    backend: Mutex<Backend>,
+    /// Whether a re-probe finds a mux where the last one found a sequencer.
+    mux_arrives: bool,
     answers: Vec<anyhow::Result<FriJobOwnership>>,
     snark_answers: Vec<anyhow::Result<SnarkRunOwnership>>,
     polls: AtomicUsize,
+    reprobes: AtomicUsize,
 }
 
 impl ScriptedClient {
     fn new(answers: Vec<anyhow::Result<FriJobOwnership>>) -> Self {
         Self {
             url: Url::parse("http://localhost:3124").expect("valid url"),
+            backend: Mutex::new(Backend::Mux),
+            mux_arrives: false,
             answers,
             snark_answers: vec![],
             polls: AtomicUsize::new(0),
+            reprobes: AtomicUsize::new(0),
         }
     }
 
@@ -32,8 +39,28 @@ impl ScriptedClient {
         }
     }
 
+    /// Moves the client behind a plain sequencer, which serves no cancellation.
+    fn on_plain_sequencer(self) -> Self {
+        Self {
+            backend: Mutex::new(Backend::Sequencer),
+            ..self
+        }
+    }
+
+    /// A plain sequencer whose URL a mux answers by the next re-probe.
+    fn on_sequencer_becoming_mux(self) -> Self {
+        Self {
+            mux_arrives: true,
+            ..self.on_plain_sequencer()
+        }
+    }
+
     fn polls(&self) -> usize {
         self.polls.load(Ordering::Relaxed)
+    }
+
+    fn reprobes(&self) -> usize {
+        self.reprobes.load(Ordering::Relaxed)
     }
 }
 
@@ -41,6 +68,22 @@ impl ScriptedClient {
 impl ProofClient for ScriptedClient {
     fn sequencer_url(&self) -> &Url {
         &self.url
+    }
+
+    fn supports_cancellation(&self) -> bool {
+        self.backend
+            .lock()
+            .expect("backend is not poisoned")
+            .supports_cancellation()
+    }
+
+    async fn refresh_backend(&self) {
+        self.reprobes.fetch_add(1, Ordering::Relaxed);
+        if !self.mux_arrives {
+            return;
+        }
+
+        *self.backend.lock().expect("backend is not poisoned") = Backend::Mux;
     }
 
     async fn fri_job_ownership(&self, _batch_number: u32) -> anyhow::Result<FriJobOwnership> {
@@ -192,6 +235,40 @@ async fn zero_interval_disables_the_watchdog() {
 
     assert!(finished, "no watchdog means no cancellation");
     assert_eq!(client.polls(), 0, "the sequencer must not be polled at all");
+}
+
+/// The interval is a cadence, not an opt-in: a set flag still polls nothing at a URL the
+/// probe read as a plain sequencer.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_plain_sequencer_is_never_polled() {
+    let client = ScriptedClient::new(vec![Ok(FriJobOwnership::Lost {
+        owner: "prover-b".to_string(),
+    })])
+    .on_plain_sequencer();
+
+    let finished = with_watchdog(&client, Watched::Fri(7), Some(TICK), |cancel| {
+        prove_until_cancelled(cancel, 4)
+    });
+
+    assert!(finished, "a plain sequencer must never cancel a job");
+    assert_eq!(client.polls(), 0, "the sequencer must not be polled at all");
+    assert!(client.reprobes() > 0, "the backend should be re-probed");
+}
+
+/// A 404 that expires: the watchdog polls as soon as a re-probe finds the mux.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_sequencer_that_becomes_a_mux_starts_cancelling() {
+    let client = ScriptedClient::new(vec![Ok(FriJobOwnership::Lost {
+        owner: "prover-b".to_string(),
+    })])
+    .on_sequencer_becoming_mux();
+
+    let finished = with_watchdog(&client, Watched::Fri(7), Some(TICK), |cancel| {
+        prove_until_cancelled(cancel, 40)
+    });
+
+    assert!(!finished, "the re-probe should have restored cancellation");
+    assert_eq!(client.reprobes(), 1, "one re-probe flips the latch");
 }
 
 #[tokio::test(flavor = "multi_thread")]

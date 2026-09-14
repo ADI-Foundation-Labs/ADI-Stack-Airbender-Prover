@@ -1,12 +1,14 @@
 // TODO: Currently disabled as it's not used anywhere. Needs a rework anyways.
 // pub mod file_based_proof_client;
 
+pub mod backend;
 pub mod cancel;
 pub mod ownership;
 pub mod sequencer_endpoint;
 pub mod sequencer_proof_client;
 pub mod timeouts;
 
+pub use backend::Backend;
 pub use cancel::{with_watchdog, CancelFlag, Watched};
 pub use ownership::{FriJobOwnership, SnarkRunOwnership};
 pub use sequencer_endpoint::SequencerEndpoint;
@@ -123,6 +125,12 @@ pub trait ProofClient: Send + Sync {
     /// Returns the sequencer URL for logging purposes.
     fn sequencer_url(&self) -> &Url;
 
+    /// Whether cancellation runs against this endpoint — muxes only.
+    fn supports_cancellation(&self) -> bool;
+
+    /// Re-probes the backend when a plain-sequencer answer has gone stale.
+    async fn refresh_backend(&self);
+
     /// Fetch the next FRI batch to prove.
     /// Returns `Ok(None)` if there's no batch pending (204 No Content).
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>>;
@@ -148,7 +156,7 @@ pub trait ProofClient: Send + Sync {
     /// Read who currently holds the batches of `from..=to`, per `GET /SNARK/status/`.
     ///
     /// # Errors
-    /// The path is multiplexer-only, so a raw sequencer answers 404 — keep proving.
+    /// The path is mux-only, so a raw sequencer answers 404 — keep proving.
     async fn snark_run_ownership(&self, from: u32, to: u32) -> anyhow::Result<SnarkRunOwnership>;
 
     /// Submit a SNARK proof for the processed batch range.

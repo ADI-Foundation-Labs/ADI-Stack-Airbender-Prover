@@ -12,7 +12,7 @@ use std::{
 
 use tokio::runtime::Handle;
 
-use crate::{FriJobOwnership, ProofClient, SnarkRunOwnership};
+use crate::{backend::REPROBE_INTERVAL, FriJobOwnership, ProofClient, SnarkRunOwnership};
 
 /// Shared "stop proving this batch" flag, set by the watchdog and read at phase boundaries.
 #[derive(Debug, Clone, Default)]
@@ -121,10 +121,21 @@ struct Watchdog<'a> {
 impl Watchdog<'_> {
     /// Polls until the job is lost or `stop` is dropped.
     fn run(self, stop: &mpsc::Receiver<()>) {
+        // Before the first sleep, so the re-probe cadence belongs to the client and not to
+        // this thread: a job shorter than the interval still takes its turn.
+        if !self.client.supports_cancellation() {
+            self.refresh_backend();
+        }
+
         while matches!(
-            stop.recv_timeout(self.interval),
+            stop.recv_timeout(self.wait()),
             Err(RecvTimeoutError::Timeout)
         ) {
+            if !self.client.supports_cancellation() {
+                self.refresh_backend();
+                continue;
+            }
+
             let Some(loss) = self.check() else {
                 continue;
             };
@@ -139,6 +150,21 @@ impl Watchdog<'_> {
             self.flag.cancel();
             return;
         }
+    }
+
+    /// Returns the poll interval once the URL serves cancellation, the re-probe interval
+    /// while it does not.
+    fn wait(&self) -> Duration {
+        if self.client.supports_cancellation() {
+            return self.interval;
+        }
+
+        REPROBE_INTERVAL
+    }
+
+    /// Asks the client to re-take a stale plain-sequencer answer.
+    fn refresh_backend(&self) {
+        self.runtime.block_on(self.client.refresh_backend());
     }
 
     /// One ownership check, with the fail-open rule applied: any error keeps proving.
@@ -159,7 +185,8 @@ impl Watchdog<'_> {
 
 /// Runs `proving` with a watchdog thread polling `client` for loss of ownership.
 ///
-/// `None` disables the watchdog. It needs its own OS thread because `proving` blocks.
+/// The watchdog needs its own OS thread because `proving` blocks. `interval` sets its
+/// cadence; a URL that is not a mux is re-probed instead of polled.
 pub fn with_watchdog<T>(
     client: &dyn ProofClient,
     watched: Watched,

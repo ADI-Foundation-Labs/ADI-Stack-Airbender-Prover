@@ -4,6 +4,7 @@ use crate::metrics::Method;
 use crate::ownership::{FriJobStatusPayload, SnarkJobStatusPayload};
 use crate::sequencer_endpoint::SequencerEndpoint;
 use crate::{
+    backend::{self, Backend, Latch},
     ClientTimeouts, FailedFriProofPayload, FriJobInputs, FriJobOwnership, GetSnarkProofPayload,
     NextFriProverJobPayload, PeekableProofClient, ProofClient, SnarkProofInputs, SnarkRunOwnership,
     SubmitFriProofPayload, SubmitSnarkProofPayload,
@@ -27,6 +28,8 @@ pub struct SequencerProofClient {
     prover_name: String,
     timeouts: ClientTimeouts,
     supported_vk_hashes: Vec<String>,
+    /// Which backend answers `endpoint`, once [`Self::detect_backend`] has asked.
+    backend: Latch,
 }
 
 impl SequencerProofClient {
@@ -35,9 +38,12 @@ impl SequencerProofClient {
     /// `supported_vk_hashes` rides on every pick request, so the sequencer only assigns jobs
     /// of those versions; an empty list declares nothing and takes jobs of any version.
     ///
+    /// Crate-private: it leaves the backend unprobed, and such a client never cancels.
+    /// [`Self::new_clients`] is the public constructor.
+    ///
     /// # Errors
     /// * if building the reqwest client fails
-    pub fn new(
+    pub(crate) fn new(
         endpoint: SequencerEndpoint,
         prover_name: String,
         timeouts: ClientTimeouts,
@@ -74,15 +80,42 @@ impl SequencerProofClient {
             prover_name,
             timeouts,
             supported_vk_hashes,
+            backend: Latch::default(),
         })
     }
 
-    /// Creates one client per sequencer endpoint, all sharing the same configuration.
+    /// Probes the endpoint for the first time and names the backend it found.
+    ///
+    /// # Errors
+    /// * if the SNARK status URL cannot be built
+    pub(crate) async fn detect_backend(&self) -> anyhow::Result<()> {
+        let backend = self.probe_backend().await?;
+
+        tracing::info!(
+            "Sequencer {} answers as {backend}, so {}",
+            self.endpoint,
+            backend.cancellation_posture()
+        );
+
+        Ok(())
+    }
+
+    /// Probes the endpoint and stores the answer in the latch.
+    async fn probe_backend(&self) -> anyhow::Result<Backend> {
+        let url = self.build_url(&format!("SNARK/status/?id={}", self.prover_name))?;
+        let backend = backend::probe(&self.client, &url, self.timeouts.cancel_request).await;
+
+        self.backend.set(backend);
+        Ok(backend)
+    }
+
+    /// Creates one client per sequencer endpoint, all sharing the same configuration, and
+    /// probes each endpoint for the backend behind it.
     ///
     /// # Errors
     /// * if there are no endpoints provided (empty vector)
-    /// * if creating any of the clients fails
-    pub fn new_clients(
+    /// * if creating or probing any of the clients fails
+    pub async fn new_clients(
         endpoints: Vec<SequencerEndpoint>,
         prover_name: String,
         timeouts: ClientTimeouts,
@@ -92,24 +125,28 @@ impl SequencerProofClient {
             return Err(anyhow!("No sequencer endpoints provided"));
         }
 
-        endpoints
-            .into_iter()
-            .enumerate()
-            .map(|(i, endpoint)| {
-                let url = endpoint.url.clone();
-                let client = SequencerProofClient::new(
-                    endpoint,
-                    prover_name.clone(),
-                    timeouts,
-                    supported_vk_hashes.clone(),
-                )
-                .with_context(|| {
-                    format!("Failed to create sequencer client #{i} at url {url:?}")
-                })?;
+        let mut clients: Vec<Box<dyn ProofClient + Send + Sync>> =
+            Vec::with_capacity(endpoints.len());
 
-                Ok(Box::new(client) as Box<dyn ProofClient + Send + Sync>)
-            })
-            .collect()
+        for (i, endpoint) in endpoints.into_iter().enumerate() {
+            let url = endpoint.url.clone();
+            let client = SequencerProofClient::new(
+                endpoint,
+                prover_name.clone(),
+                timeouts,
+                supported_vk_hashes.clone(),
+            )
+            .with_context(|| format!("Failed to create sequencer client #{i} at url {url:?}"))?;
+
+            client
+                .detect_backend()
+                .await
+                .with_context(|| format!("Failed to probe sequencer client #{i} at url {url:?}"))?;
+
+            clients.push(Box::new(client));
+        }
+
+        Ok(clients)
     }
 
     /// Serialize a SNARK proof into a base64-encoded string suitable for submission.
@@ -168,6 +205,31 @@ impl SequencerProofClient {
 impl ProofClient for SequencerProofClient {
     fn sequencer_url(&self) -> &Url {
         &self.endpoint
+    }
+
+    fn supports_cancellation(&self) -> bool {
+        self.backend.supports_cancellation()
+    }
+
+    async fn refresh_backend(&self) {
+        if !self.backend.wants_reprobe(backend::REPROBE_INTERVAL) {
+            return;
+        }
+
+        let Ok(backend) = self.probe_backend().await.inspect_err(|err| {
+            tracing::warn!("Backend re-probe of {} failed: {err}", self.endpoint);
+        }) else {
+            return;
+        };
+
+        if !backend.supports_cancellation() {
+            return;
+        }
+
+        tracing::info!(
+            "Sequencer {} now answers as {backend}, so ownership checks start against it",
+            self.endpoint
+        );
     }
 
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
@@ -460,7 +522,12 @@ impl PeekableProofClient for SequencerProofClient {
 
 #[cfg(test)]
 mod tests {
-    use std::{net::TcpListener, time::Duration};
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
 
     use super::*;
 
@@ -675,5 +742,144 @@ mod tests {
             .expect_err("a silent server cannot answer");
 
         assert_gave_up_on_the_cancel_timeout(&err, started_at.elapsed());
+    }
+
+    /// An HTTP server that answers every request with one fixed status and keeps the
+    /// request lines it was sent.
+    struct FakeBackend {
+        url: Url,
+        requests: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl FakeBackend {
+        /// Starts a server answering `status_line`, e.g. `"404 Not Found"`.
+        fn answering(status_line: &str) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind");
+            let address = listener.local_addr().expect("bound socket has an address");
+            let response =
+                format!("HTTP/1.1 {status_line}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n");
+
+            let requests = Arc::new(Mutex::new(Vec::new()));
+            let recorder = Arc::clone(&requests);
+
+            std::thread::spawn(move || {
+                while let Ok((mut stream, _)) = listener.accept() {
+                    // Drain the request before answering: closing on unread bytes reaches
+                    // the client as a reset instead of the status we want it to read.
+                    let mut buffer = [0u8; 1024];
+                    let read = stream.read(&mut buffer).unwrap_or(0);
+                    let request = String::from_utf8_lossy(&buffer[..read]);
+                    if let Some(line) = request.lines().next() {
+                        recorder
+                            .lock()
+                            .expect("request log is not poisoned")
+                            .push(line.to_string());
+                    }
+
+                    let _ = stream.write_all(response.as_bytes());
+                    let _ = stream.flush();
+                }
+            });
+
+            Self {
+                url: Url::parse(&format!("http://{address}")).expect("valid url"),
+                requests,
+            }
+        }
+
+        /// The request lines the server has been sent so far.
+        fn requests(&self) -> Vec<String> {
+            self.requests
+                .lock()
+                .expect("request log is not poisoned")
+                .clone()
+        }
+    }
+
+    /// Builds a client against `url` and probes it, as `new_clients` does at startup.
+    async fn probed_client(url: &Url) -> SequencerProofClient {
+        let endpoint = SequencerEndpoint::parse(url.as_str()).expect("valid url");
+        let client = SequencerProofClient::new(
+            endpoint,
+            "prover-a".to_string(),
+            ClientTimeouts {
+                request: Duration::from_secs(10),
+                cancel_request: Duration::from_millis(200),
+            },
+            vec![],
+        )
+        .expect("failed to create client");
+
+        client.detect_backend().await.expect("failed to probe");
+        client
+    }
+
+    /// The probe is the SNARK status read, named after this prover: mux rejects the route
+    /// without an id, so a probe that dropped it would read every mux as a plain sequencer.
+    #[tokio::test]
+    async fn the_probe_asks_the_snark_status_route() {
+        let backend = FakeBackend::answering("200 OK");
+
+        probed_client(&backend.url).await;
+
+        assert_eq!(
+            backend.requests(),
+            vec!["GET /prover-jobs/v1/SNARK/status/?id=prover-a HTTP/1.1".to_string()]
+        );
+    }
+
+    /// The route exists on a mux alone, so answering it at all is the positive.
+    #[tokio::test]
+    async fn a_served_snark_status_route_reads_as_mux() {
+        let backend = FakeBackend::answering("200 OK");
+
+        assert!(probed_client(&backend.url).await.supports_cancellation());
+    }
+
+    /// The sequencer's route table has no SNARK status path, so axum falls through to 404.
+    #[tokio::test]
+    async fn a_404_reads_as_a_plain_sequencer() {
+        let backend = FakeBackend::answering("404 Not Found");
+
+        assert!(!probed_client(&backend.url).await.supports_cancellation());
+    }
+
+    /// mux answers 503 when its store is unreadable, which says nothing about the backend.
+    #[tokio::test]
+    async fn an_unreadable_store_still_reads_as_mux() {
+        let backend = FakeBackend::answering("503 Service Unavailable");
+
+        assert!(probed_client(&backend.url).await.supports_cancellation());
+    }
+
+    /// A URL that will not answer must not block startup, nor lose cancellation silently.
+    #[tokio::test]
+    async fn a_silent_url_reads_as_mux() {
+        let url = silent_url();
+        let started_at = Instant::now();
+
+        assert!(probed_client(&url).await.supports_cancellation());
+        assert!(
+            started_at.elapsed() < Duration::from_secs(3),
+            "the probe waited {:?}, so it ignored the cancel timeout",
+            started_at.elapsed()
+        );
+    }
+
+    /// A sequencer that is not up yet reads as mux too — only a 404 is a sound negative.
+    #[tokio::test]
+    async fn a_refused_connection_reads_as_mux() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind");
+        let address = listener.local_addr().expect("bound socket has an address");
+        drop(listener);
+        let url = Url::parse(&format!("http://{address}")).expect("valid url");
+
+        assert!(probed_client(&url).await.supports_cancellation());
+    }
+
+    /// Cancellation is opt-in per URL: a client built by hand has not probed anything.
+    #[test]
+    fn an_unprobed_client_does_not_cancel() {
+        assert!(!test_client().supports_cancellation());
     }
 }
