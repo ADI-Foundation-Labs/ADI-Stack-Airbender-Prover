@@ -1,10 +1,11 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::metrics::Method;
 use crate::ownership::{FriJobStatusPayload, SnarkJobStatusPayload};
 use crate::sequencer_endpoint::SequencerEndpoint;
 use crate::{
-    FailedFriProofPayload, FriJobInputs, FriJobOwnership, GetSnarkProofPayload,
+    backend::{self, Backend, Latch},
+    ClientTimeouts, FailedFriProofPayload, FriJobInputs, FriJobOwnership, GetSnarkProofPayload,
     NextFriProverJobPayload, PeekableProofClient, ProofClient, SnarkProofInputs, SnarkRunOwnership,
     SubmitFriProofPayload, SubmitSnarkProofPayload,
 };
@@ -25,26 +26,27 @@ pub struct SequencerProofClient {
     client: reqwest::Client,
     endpoint: Url,
     prover_name: String,
+    timeouts: ClientTimeouts,
     supported_vk_hashes: Vec<String>,
+    /// Which backend answers `endpoint`, once [`Self::detect_backend`] has asked.
+    backend: Latch,
 }
 
 impl SequencerProofClient {
-    /// Create a new proof sequencer client.
+    /// Creates a proof client for one sequencer endpoint.
     ///
-    /// # Arguments
-    /// * `endpoint` - The sequencer endpoint (URL + optional credentials)
-    /// * `prover_name` - The name of the prover (used for identification in sequencer prover api)
-    /// * `timeout` - Optional timeout for requests (None defaults to 2 seconds)
-    /// * `supported_vk_hashes` - VK hashes this prover supports; sent on pick requests so the
-    ///   sequencer only assigns jobs of these versions. Empty means no declaration - the
-    ///   sequencer will offer jobs of any version.
+    /// `supported_vk_hashes` rides on every pick request, so the sequencer only assigns jobs
+    /// of those versions; an empty list declares nothing and takes jobs of any version.
+    ///
+    /// Crate-private: it leaves the backend unprobed, and such a client never cancels.
+    /// [`Self::new_clients`] is the public constructor.
     ///
     /// # Errors
     /// * if building the reqwest client fails
-    pub fn new(
+    pub(crate) fn new(
         endpoint: SequencerEndpoint,
         prover_name: String,
-        timeout: Option<Duration>,
+        timeouts: ClientTimeouts,
         supported_vk_hashes: Vec<String>,
     ) -> anyhow::Result<Self> {
         let mut headers = HeaderMap::new();
@@ -67,7 +69,7 @@ impl SequencerProofClient {
         }
 
         let client = reqwest::Client::builder()
-            .timeout(timeout.unwrap_or(Duration::from_secs(2)))
+            .timeout(timeouts.request)
             .default_headers(headers)
             .build()
             .context("Failed to build reqwest client")?;
@@ -76,51 +78,75 @@ impl SequencerProofClient {
             client,
             endpoint: endpoint.url,
             prover_name,
+            timeouts,
             supported_vk_hashes,
+            backend: Latch::default(),
         })
     }
 
-    /// Create multiple sequencer proof clients from a list of endpoints.
+    /// Probes the endpoint for the first time and names the backend it found.
     ///
-    /// # Arguments
-    /// * `endpoints` - A vector of sequencer endpoints
-    /// * `prover_name` - The name of the prover (used for identification in sequencer prover api)
-    /// * `timeout` - Optional timeout for requests (None defaults to 2 seconds)
-    /// * `supported_vk_hashes` - VK hashes this prover supports; sent on pick requests so the
-    ///   sequencer only assigns jobs of these versions. Empty means no declaration - the
-    ///   sequencer will offer jobs of any version.
+    /// # Errors
+    /// * if the SNARK status URL cannot be built
+    pub(crate) async fn detect_backend(&self) -> anyhow::Result<()> {
+        let backend = self.probe_backend().await?;
+
+        tracing::info!(
+            "Sequencer {} answers as {backend}, so {}",
+            self.endpoint,
+            backend.cancellation_posture()
+        );
+
+        Ok(())
+    }
+
+    /// Probes the endpoint and stores the answer in the latch.
+    async fn probe_backend(&self) -> anyhow::Result<Backend> {
+        let url = self.build_url(&format!("SNARK/status/?id={}", self.prover_name))?;
+        let backend = backend::probe(&self.client, &url, self.timeouts.cancel_request).await;
+
+        self.backend.set(backend);
+        Ok(backend)
+    }
+
+    /// Creates one client per sequencer endpoint, all sharing the same configuration, and
+    /// probes each endpoint for the backend behind it.
     ///
     /// # Errors
     /// * if there are no endpoints provided (empty vector)
-    /// * if creating any of the clients fails
-    pub fn new_clients(
+    /// * if creating or probing any of the clients fails
+    pub async fn new_clients(
         endpoints: Vec<SequencerEndpoint>,
         prover_name: String,
-        timeout: Option<Duration>,
+        timeouts: ClientTimeouts,
         supported_vk_hashes: Vec<String>,
     ) -> anyhow::Result<Vec<Box<dyn ProofClient + Send + Sync>>> {
         if endpoints.is_empty() {
             return Err(anyhow!("No sequencer endpoints provided"));
         }
 
-        endpoints
-            .into_iter()
-            .enumerate()
-            .map(|(i, endpoint)| {
-                let url = endpoint.url.clone();
-                let client = SequencerProofClient::new(
-                    endpoint,
-                    prover_name.clone(),
-                    timeout,
-                    supported_vk_hashes.clone(),
-                )
-                .with_context(|| {
-                    format!("Failed to create sequencer client #{i} at url {url:?}")
-                })?;
+        let mut clients: Vec<Box<dyn ProofClient + Send + Sync>> =
+            Vec::with_capacity(endpoints.len());
 
-                Ok(Box::new(client) as Box<dyn ProofClient + Send + Sync>)
-            })
-            .collect()
+        for (i, endpoint) in endpoints.into_iter().enumerate() {
+            let url = endpoint.url.clone();
+            let client = SequencerProofClient::new(
+                endpoint,
+                prover_name.clone(),
+                timeouts,
+                supported_vk_hashes.clone(),
+            )
+            .with_context(|| format!("Failed to create sequencer client #{i} at url {url:?}"))?;
+
+            client
+                .detect_backend()
+                .await
+                .with_context(|| format!("Failed to probe sequencer client #{i} at url {url:?}"))?;
+
+            clients.push(Box::new(client));
+        }
+
+        Ok(clients)
     }
 
     /// Serialize a SNARK proof into a base64-encoded string suitable for submission.
@@ -179,6 +205,31 @@ impl SequencerProofClient {
 impl ProofClient for SequencerProofClient {
     fn sequencer_url(&self) -> &Url {
         &self.endpoint
+    }
+
+    fn supports_cancellation(&self) -> bool {
+        self.backend.supports_cancellation()
+    }
+
+    async fn refresh_backend(&self) {
+        if !self.backend.wants_reprobe(backend::REPROBE_INTERVAL) {
+            return;
+        }
+
+        let Ok(backend) = self.probe_backend().await.inspect_err(|err| {
+            tracing::warn!("Backend re-probe of {} failed: {err}", self.endpoint);
+        }) else {
+            return;
+        };
+
+        if !backend.supports_cancellation() {
+            return;
+        }
+
+        tracing::info!(
+            "Sequencer {} now answers as {backend}, so ownership checks start against it",
+            self.endpoint
+        );
     }
 
     async fn pick_fri_job(&self) -> anyhow::Result<Option<FriJobInputs>> {
@@ -290,6 +341,7 @@ impl ProofClient for SequencerProofClient {
         let resp = self
             .client
             .get(url.clone())
+            .timeout(self.timeouts.cancel_request)
             .send()
             .await
             .context("Fri Job Status request failed")?;
@@ -324,6 +376,7 @@ impl ProofClient for SequencerProofClient {
         let resp = self
             .client
             .get(url.clone())
+            .timeout(self.timeouts.cancel_request)
             .send()
             .await
             .context("Snark Run Status request failed")?;
@@ -469,14 +522,26 @@ impl PeekableProofClient for SequencerProofClient {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
+
     use super::*;
 
     #[test]
     fn test_client_strips_credentials() {
         let endpoint = SequencerEndpoint::parse("http://user:password123@localhost:3124").unwrap();
 
-        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None, vec![])
-            .expect("failed to create client");
+        let client = SequencerProofClient::new(
+            endpoint,
+            "test_prover".to_string(),
+            ClientTimeouts::default(),
+            vec![],
+        )
+        .expect("failed to create client");
 
         // URL should be clean (no credentials)
         let url = client.sequencer_url();
@@ -488,8 +553,13 @@ mod tests {
     #[test]
     fn test_pick_query_without_supported_vk_hashes() {
         let endpoint = SequencerEndpoint::parse("http://localhost:3124").unwrap();
-        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None, vec![])
-            .expect("failed to create client");
+        let client = SequencerProofClient::new(
+            endpoint,
+            "test_prover".to_string(),
+            ClientTimeouts::default(),
+            vec![],
+        )
+        .expect("failed to create client");
 
         assert_eq!(client.pick_query(), "id=test_prover");
     }
@@ -500,7 +570,7 @@ mod tests {
         let client = SequencerProofClient::new(
             endpoint,
             "test_prover".to_string(),
-            None,
+            ClientTimeouts::default(),
             vec!["0xaaaa".to_string(), "0xbbbb".to_string()],
         )
         .expect("failed to create client");
@@ -515,8 +585,13 @@ mod tests {
     fn test_client_without_credentials() {
         let endpoint = SequencerEndpoint::parse("http://localhost:3124").unwrap();
 
-        let client = SequencerProofClient::new(endpoint, "test_prover".to_string(), None, vec![])
-            .expect("failed to create client");
+        let client = SequencerProofClient::new(
+            endpoint,
+            "test_prover".to_string(),
+            ClientTimeouts::default(),
+            vec![],
+        )
+        .expect("failed to create client");
 
         let url = client.sequencer_url();
         assert_eq!(url.as_str(), "http://localhost:3124/");
@@ -524,8 +599,13 @@ mod tests {
 
     fn test_client() -> SequencerProofClient {
         let endpoint = SequencerEndpoint::parse("http://localhost:3124").unwrap();
-        SequencerProofClient::new(endpoint, "prover-a".to_string(), None, vec![])
-            .expect("failed to create client")
+        SequencerProofClient::new(
+            endpoint,
+            "prover-a".to_string(),
+            ClientTimeouts::default(),
+            vec![],
+        )
+        .expect("failed to create client")
     }
 
     /// A pick URL carries two parameters, and `build_url`'s second join is the one that
@@ -536,7 +616,7 @@ mod tests {
         let client = SequencerProofClient::new(
             endpoint,
             "prover-a".to_string(),
-            None,
+            ClientTimeouts::default(),
             vec!["0xaaaa".to_string(), "0xbbbb".to_string()],
         )
         .expect("failed to create client");
@@ -586,5 +666,220 @@ mod tests {
         assert_eq!(snark.query(), Some("id=prover-a"));
         assert_eq!(fri.path(), "/prover-jobs/v1/status/");
         assert_eq!(snark.path(), "/prover-jobs/v1/SNARK/status/");
+    }
+
+    /// Accepts a connection and never answers, so a request to it can only time out.
+    fn silent_url() -> Url {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind");
+        let address = listener.local_addr().expect("bound socket has an address");
+
+        std::thread::spawn(move || {
+            // Accepted streams are held, not dropped: a closed connection would fail the
+            // request instantly instead of letting it run into the timeout.
+            let mut accepted = Vec::new();
+            while let Ok((stream, _)) = listener.accept() {
+                accepted.push(stream);
+            }
+        });
+
+        Url::parse(&format!("http://{address}")).expect("valid url")
+    }
+
+    /// A client whose ownership reads are bounded far tighter than its client-wide timeout,
+    /// pointed at a server that never answers.
+    fn client_against_silence() -> SequencerProofClient {
+        let endpoint = SequencerEndpoint::parse(silent_url().as_str()).expect("valid url");
+
+        SequencerProofClient::new(
+            endpoint,
+            "prover-a".to_string(),
+            ClientTimeouts {
+                request: Duration::from_secs(10),
+                cancel_request: Duration::from_millis(200),
+            },
+            vec![],
+        )
+        .expect("failed to create client")
+    }
+
+    /// Fails unless the read gave up on `cancel_request` rather than on the client-wide
+    /// `request` timeout that pick and submit share.
+    fn assert_gave_up_on_the_cancel_timeout(err: &anyhow::Error, elapsed: Duration) {
+        assert!(
+            err.downcast_ref::<reqwest::Error>()
+                .is_some_and(reqwest::Error::is_timeout),
+            "expected a timeout, got: {err:#}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "the read waited {elapsed:?}, so it used the client-wide timeout"
+        );
+    }
+
+    #[tokio::test]
+    async fn fri_ownership_reads_use_the_cancel_timeout() {
+        let client = client_against_silence();
+
+        let started_at = Instant::now();
+        let err = client
+            .fri_job_ownership(1)
+            .await
+            .expect_err("a silent server cannot answer");
+
+        assert_gave_up_on_the_cancel_timeout(&err, started_at.elapsed());
+    }
+
+    /// The SNARK read carries its own `.timeout()` call, and it is the whole cancellation
+    /// path of the SNARK prover.
+    #[tokio::test]
+    async fn snark_ownership_reads_use_the_cancel_timeout() {
+        let client = client_against_silence();
+
+        let started_at = Instant::now();
+        let err = client
+            .snark_run_ownership(1, 2)
+            .await
+            .expect_err("a silent server cannot answer");
+
+        assert_gave_up_on_the_cancel_timeout(&err, started_at.elapsed());
+    }
+
+    /// An HTTP server that answers every request with one fixed status and keeps the
+    /// request lines it was sent.
+    struct FakeBackend {
+        url: Url,
+        requests: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl FakeBackend {
+        /// Starts a server answering `status_line`, e.g. `"404 Not Found"`.
+        fn answering(status_line: &str) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind");
+            let address = listener.local_addr().expect("bound socket has an address");
+            let response =
+                format!("HTTP/1.1 {status_line}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n");
+
+            let requests = Arc::new(Mutex::new(Vec::new()));
+            let recorder = Arc::clone(&requests);
+
+            std::thread::spawn(move || {
+                while let Ok((mut stream, _)) = listener.accept() {
+                    // Drain the request before answering: closing on unread bytes reaches
+                    // the client as a reset instead of the status we want it to read.
+                    let mut buffer = [0u8; 1024];
+                    let read = stream.read(&mut buffer).unwrap_or(0);
+                    let request = String::from_utf8_lossy(&buffer[..read]);
+                    if let Some(line) = request.lines().next() {
+                        recorder
+                            .lock()
+                            .expect("request log is not poisoned")
+                            .push(line.to_string());
+                    }
+
+                    let _ = stream.write_all(response.as_bytes());
+                    let _ = stream.flush();
+                }
+            });
+
+            Self {
+                url: Url::parse(&format!("http://{address}")).expect("valid url"),
+                requests,
+            }
+        }
+
+        /// The request lines the server has been sent so far.
+        fn requests(&self) -> Vec<String> {
+            self.requests
+                .lock()
+                .expect("request log is not poisoned")
+                .clone()
+        }
+    }
+
+    /// Builds a client against `url` and probes it, as `new_clients` does at startup.
+    async fn probed_client(url: &Url) -> SequencerProofClient {
+        let endpoint = SequencerEndpoint::parse(url.as_str()).expect("valid url");
+        let client = SequencerProofClient::new(
+            endpoint,
+            "prover-a".to_string(),
+            ClientTimeouts {
+                request: Duration::from_secs(10),
+                cancel_request: Duration::from_millis(200),
+            },
+            vec![],
+        )
+        .expect("failed to create client");
+
+        client.detect_backend().await.expect("failed to probe");
+        client
+    }
+
+    /// The probe is the SNARK status read, named after this prover: mux rejects the route
+    /// without an id, so a probe that dropped it would read every mux as a plain sequencer.
+    #[tokio::test]
+    async fn the_probe_asks_the_snark_status_route() {
+        let backend = FakeBackend::answering("200 OK");
+
+        probed_client(&backend.url).await;
+
+        assert_eq!(
+            backend.requests(),
+            vec!["GET /prover-jobs/v1/SNARK/status/?id=prover-a HTTP/1.1".to_string()]
+        );
+    }
+
+    /// The route exists on a mux alone, so answering it at all is the positive.
+    #[tokio::test]
+    async fn a_served_snark_status_route_reads_as_mux() {
+        let backend = FakeBackend::answering("200 OK");
+
+        assert!(probed_client(&backend.url).await.supports_cancellation());
+    }
+
+    /// The sequencer's route table has no SNARK status path, so axum falls through to 404.
+    #[tokio::test]
+    async fn a_404_reads_as_a_plain_sequencer() {
+        let backend = FakeBackend::answering("404 Not Found");
+
+        assert!(!probed_client(&backend.url).await.supports_cancellation());
+    }
+
+    /// mux answers 503 when its store is unreadable, which says nothing about the backend.
+    #[tokio::test]
+    async fn an_unreadable_store_still_reads_as_mux() {
+        let backend = FakeBackend::answering("503 Service Unavailable");
+
+        assert!(probed_client(&backend.url).await.supports_cancellation());
+    }
+
+    /// A URL that will not answer must not block startup, nor lose cancellation silently.
+    #[tokio::test]
+    async fn a_silent_url_reads_as_mux() {
+        let url = silent_url();
+        let started_at = Instant::now();
+
+        assert!(probed_client(&url).await.supports_cancellation());
+        assert!(
+            started_at.elapsed() < Duration::from_secs(3),
+            "the probe waited {:?}, so it ignored the cancel timeout",
+            started_at.elapsed()
+        );
+    }
+
+    /// A sequencer that is not up yet reads as mux too — only a 404 is a sound negative.
+    #[tokio::test]
+    async fn a_refused_connection_reads_as_mux() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind");
+        let address = listener.local_addr().expect("bound socket has an address");
+        drop(listener);
+        let url = Url::parse(&format!("http://{address}")).expect("valid url");
+
+        assert!(probed_client(&url).await.supports_cancellation());
+    }
+
+    /// Cancellation is opt-in per URL: a client built by hand has not probed anything.
+    #[test]
+    fn an_unprobed_client_does_not_cancel() {
+        assert!(!test_client().supports_cancellation());
     }
 }

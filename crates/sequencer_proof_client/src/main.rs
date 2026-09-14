@@ -1,9 +1,10 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{fmt, EnvFilter};
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_sequencer_proof_client::{
-    FriJobInputs, L2BatchNumber, ProofClient, SequencerEndpoint, SequencerProofClient,
+    ClientTimeouts, FriJobInputs, L2BatchNumber, ProofClient, SequencerEndpoint,
+    SequencerProofClient,
 };
 
 #[derive(Parser)]
@@ -41,16 +42,20 @@ impl Cli {
     }
 
     /// Return sequencer client from CLI params. To be called only after `Cli::init()`.
-    fn sequencer_client(&self) -> anyhow::Result<SequencerProofClient> {
+    async fn sequencer_client(&self) -> anyhow::Result<Box<dyn ProofClient + Send + Sync>> {
         // The CLI client declares no supported versions - the sequencer offers it any job.
-        SequencerProofClient::new(
-            self.url
+        let mut clients = SequencerProofClient::new_clients(
+            vec![self
+                .url
                 .clone()
-                .expect("called sequencer_client() before init()"),
+                .expect("called sequencer_client() before init()")],
             "cli_client".to_string(),
-            None,
+            ClientTimeouts::default(),
             vec![],
         )
+        .await?;
+
+        clients.pop().context("no client built for the --url given")
     }
 }
 
@@ -128,7 +133,7 @@ fn init_tracing(verbosity: u8) {
 async fn main() -> Result<()> {
     let cli = Cli::init()?;
 
-    let client = cli.sequencer_client()?;
+    let client = cli.sequencer_client().await?;
 
     let url = client.sequencer_url();
 

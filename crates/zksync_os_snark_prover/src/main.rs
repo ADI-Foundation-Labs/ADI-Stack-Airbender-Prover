@@ -8,7 +8,9 @@ use zkos_wrapper::gpu_config::{parse_byte_size, MAX_DEVICE_ALLOCATION_ENV};
 use zksync_os_snark_prover::{
     generate_verification_key, init_tracing, metrics, run_linking_fri_snark,
 };
-use zksync_sequencer_proof_client::{SequencerEndpoint, SequencerProofClient};
+use zksync_sequencer_proof_client::{
+    ClientTimeouts, ProofClient, SequencerEndpoint, SequencerProofClient,
+};
 
 #[derive(Default, Debug, Serialize, Deserialize, Parser, Clone)]
 pub struct SetupOptions {
@@ -85,10 +87,43 @@ enum Commands {
         #[arg(long, default_value = "unknown_prover")]
         prover_name: String,
         /// How often to check whether this prover still owns the run it is proving, in seconds.
-        /// `0`, the default, disables cancellation entirely; set it only behind mux.
-        #[arg(long, default_value = "0")]
+        /// A URL probed as a plain sequencer is not checked until a re-probe finds a mux; `0`
+        /// disables the checks for every URL.
+        #[arg(long, default_value = "10")]
         cancel_poll_interval_secs: u64,
+        /// Timeout for a single ownership check, in seconds.
+        #[arg(long, default_value = "5", value_parser = clap::value_parser!(u64).range(1..))]
+        cancel_request_timeout_secs: u64,
     },
+}
+
+/// Logs the cancellation posture the prover starts with: the cadence, or why nothing polls.
+fn log_cancellation_posture(
+    clients: &[Box<dyn ProofClient + Send + Sync>],
+    interval: Option<Duration>,
+    request_timeout_secs: u64,
+) {
+    let Some(interval) = interval else {
+        tracing::info!(
+            "Run ownership checks disabled by --cancel-poll-interval-secs 0; \
+             jobs will never be cancelled"
+        );
+        return;
+    };
+
+    if !clients.iter().any(|client| client.supports_cancellation()) {
+        tracing::info!(
+            "No sequencer URL answered as a mux; run ownership checks wait for \
+             a re-probe to find one"
+        );
+        return;
+    }
+
+    tracing::info!(
+        "Checking run ownership every {}s, timing out each check after {}s",
+        interval.as_secs(),
+        request_timeout_secs
+    );
 }
 
 fn main() {
@@ -142,6 +177,7 @@ fn main() {
             disable_zk,
             prover_name,
             cancel_poll_interval_secs,
+            cancel_request_timeout_secs,
         } => {
             // TODO: edit this comment
             // we need a bigger stack, due to crypto code exhausting default stack size, 40 MBs picked here
@@ -160,7 +196,8 @@ fn main() {
                     metrics::start_metrics_exporter(prometheus_port, stop_receiver).await
                 });
 
-                let timeout = Duration::from_secs(request_timeout_secs);
+                let timeouts =
+                    ClientTimeouts::new(request_timeout_secs, cancel_request_timeout_secs);
 
                 tracing::info!(
                     "Creating {} sequencer proof clients for urls: {:?}",
@@ -171,9 +208,10 @@ fn main() {
                 let clients = SequencerProofClient::new_clients(
                     sequencer_urls,
                     prover_name,
-                    Some(timeout),
+                    timeouts,
                     supported_versions.vk_hashes(),
                 )
+                .await
                 .expect("failed to create sequencer proof clients");
 
                 tracing::info!(
@@ -183,15 +221,11 @@ fn main() {
 
                 let cancel_poll_interval = (cancel_poll_interval_secs > 0)
                     .then(|| Duration::from_secs(cancel_poll_interval_secs));
-                match cancel_poll_interval {
-                    Some(interval) => {
-                        tracing::info!("Checking run ownership every {}s", interval.as_secs())
-                    }
-                    None => tracing::warn!(
-                        "Run ownership checks disabled, jobs will never be cancelled; \
-                         set --cancel-poll-interval-secs when running behind mux"
-                    ),
-                }
+                log_cancellation_posture(
+                    &clients,
+                    cancel_poll_interval,
+                    cancel_request_timeout_secs,
+                );
 
                 tokio::select! {
                     result = run_linking_fri_snark(
