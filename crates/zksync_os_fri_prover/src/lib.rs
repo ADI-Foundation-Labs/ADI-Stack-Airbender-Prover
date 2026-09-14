@@ -76,8 +76,9 @@ pub struct Args {
     pub prover_name: String,
 
     /// How often to check whether this prover still owns the batch it is proving, in seconds.
-    /// `0`, the default, disables cancellation entirely; set it only behind mux.
-    #[arg(long, default_value = "0")]
+    /// A URL probed as a plain sequencer is not checked until a re-probe finds a mux; `0`
+    /// disables the checks for every URL.
+    #[arg(long, default_value = "10")]
     pub cancel_poll_interval_secs: u64,
 
     /// Timeout for a single ownership check, in seconds.
@@ -153,17 +154,17 @@ fn log_cancellation_posture(
     request_timeout_secs: u64,
 ) {
     let Some(interval) = interval else {
-        tracing::warn!(
-            "Batch ownership checks disabled, jobs will never be cancelled; \
-             set --cancel-poll-interval-secs when running behind mux"
+        tracing::info!(
+            "Batch ownership checks disabled by --cancel-poll-interval-secs 0; \
+             jobs will never be cancelled"
         );
         return;
     };
 
     if !clients.iter().any(|client| client.supports_cancellation()) {
-        tracing::warn!(
-            "No sequencer URL answered as a mux, so batch ownership checks will \
-             not run despite --cancel-poll-interval-secs"
+        tracing::info!(
+            "No sequencer URL answered as a mux; batch ownership checks wait for \
+             a re-probe to find one"
         );
         return;
     }
