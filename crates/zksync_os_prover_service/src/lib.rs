@@ -21,7 +21,7 @@ use zksync_airbender_cli::prover_utils::GpuSharedState;
 use zksync_airbender_execution_utils::{get_padded_binary, UNIVERSAL_CIRCUIT_VERIFIER};
 #[cfg(feature = "gpu")]
 use zksync_os_snark_prover::compute_compression_vk;
-use zksync_sequencer_proof_client::{SequencerEndpoint, SequencerProofClient};
+use zksync_sequencer_proof_client::{ClientTimeouts, SequencerEndpoint, SequencerProofClient};
 
 /// Command-line arguments for the Zksync OS prover
 #[derive(Parser, Debug)]
@@ -120,7 +120,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let clients = SequencerProofClient::new_clients(
         args.sequencer_urls,
         "prover_service".to_string(),
-        None,
+        ClientTimeouts::default(),
         supported_versions.vk_hashes(),
     )
     .context("failed to create sequencer proof clients")?;

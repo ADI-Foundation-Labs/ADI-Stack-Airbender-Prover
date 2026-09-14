@@ -15,8 +15,8 @@ use zksync_airbender_cli::prover_utils::{
 };
 use zksync_airbender_execution_utils::{Machine, ProgramProof, RecursionStrategy};
 use zksync_sequencer_proof_client::{
-    with_watchdog, CancelFlag, FriJobInputs, ProofClient, SequencerEndpoint, SequencerProofClient,
-    Watched,
+    with_watchdog, CancelFlag, ClientTimeouts, FriJobInputs, ProofClient, SequencerEndpoint,
+    SequencerProofClient, Watched,
 };
 
 use crate::metrics::FRI_PROVER_METRICS;
@@ -79,6 +79,10 @@ pub struct Args {
     /// `0`, the default, disables cancellation entirely; set it only behind mux.
     #[arg(long, default_value = "0")]
     pub cancel_poll_interval_secs: u64,
+
+    /// Timeout for a single ownership check, in seconds.
+    #[arg(long, default_value = "5", value_parser = clap::value_parser!(u64).range(1..))]
+    pub cancel_request_timeout_secs: u64,
 }
 
 pub fn init_tracing() {
@@ -143,7 +147,7 @@ pub fn create_proof(
 }
 
 pub async fn run(args: Args) -> anyhow::Result<()> {
-    let timeout = Duration::from_secs(args.request_timeout_secs);
+    let timeouts = ClientTimeouts::new(args.request_timeout_secs, args.cancel_request_timeout_secs);
 
     tracing::info!(
         "Creating {} sequencer proof clients for urls: {:?}",
@@ -157,7 +161,7 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
     let clients = SequencerProofClient::new_clients(
         args.sequencer_urls,
         args.prover_name,
-        Some(timeout),
+        timeouts,
         supported_versions.vk_hashes(),
     )
     .context("failed to create sequencer proof clients")?;
@@ -188,13 +192,21 @@ pub async fn run(args: Args) -> anyhow::Result<()> {
 
     let cancel_poll_interval = (args.cancel_poll_interval_secs > 0)
         .then(|| Duration::from_secs(args.cancel_poll_interval_secs));
-    match cancel_poll_interval {
-        Some(interval) => tracing::info!("Checking batch ownership every {}s", interval.as_secs()),
-        None => tracing::warn!(
-            "Batch ownership checks disabled, jobs will never be cancelled; \
-             set --cancel-poll-interval-secs when running behind mux"
-        ),
-    }
+    cancel_poll_interval.map_or_else(
+        || {
+            tracing::warn!(
+                "Batch ownership checks disabled, jobs will never be cancelled; \
+                 set --cancel-poll-interval-secs when running behind mux"
+            );
+        },
+        |interval| {
+            tracing::info!(
+                "Checking batch ownership every {}s, timing out each check after {}s",
+                interval.as_secs(),
+                args.cancel_request_timeout_secs
+            );
+        },
+    );
 
     let mut proof_count = 0;
 

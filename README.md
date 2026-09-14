@@ -56,9 +56,10 @@ cargo run --release --features gpu --bin zksync_os_fri_prover -- --sequencer-url
 
 Specify optional `--iterations` argument to run FRI prover N times and then exit.
 Specify optional `--path` argument if you want to serialize FRI proof to file.
-Specify `--request_timeout_secs` argument to set a timeout for HTTP requests (default value is 2s).
+Specify `--request-timeout-secs` argument to set a timeout for HTTP requests (default value is 2s).
 Specify `--sequencer-urls` to provide a comma-separated list of sequencer URLs to poll in round-robin fashion.
 Specify `--cancel-poll-interval-secs` to set how often the prover checks whether it still owns the batch it is proving (default 1s, `0` disables). While a batch is in flight the prover polls `GET /status/` on the sequencer that issued it; if the batch has been reassigned to a different prover, the job is abandoned at the next phase boundary instead of running to completion. Give each prover a unique `--prover-name` — the default `unknown_prover` makes two provers look like one owner, and neither will ever cancel.
+Specify `--cancel-request-timeout-secs` to bound one such ownership check (default 5s). It is separate from `--request-timeout-secs` so that the two can be sized on their own: a status listing is slower than a submission, and a submit timeout raised for a slow upload must not stretch the ownership check with it. The watchdog sleeps for the interval and then runs the check, so a check that hangs delays the next one by up to this timeout.
 
 **This command currently requires around 140 GB of RAM - and GPU**
 
@@ -74,9 +75,10 @@ RUST_MIN_STACK=267108864 cargo run --release --features gpu --bin zksync_os_snar
 ```
 
 Specify optional `--iterations` argument to run SNARK prover N times and then exit.
-Specify `--request_timeout_secs` argument to set a timeout for HTTP requests (default value is 2s).
+Specify `--request-timeout-secs` argument to set a timeout for HTTP requests (default value is 2s).
 Specify `--sequencer-urls` to provide a comma-separated list of sequencer URLs to poll in round-robin fashion.
 Specify `--cancel-poll-interval-secs` to set how often the prover checks whether it still owns the run it is proving (default 1s, `0` disables). While a run is in flight the prover polls `GET /SNARK/status/` on the sequencer that issued it; if any batch of the range has been reassigned to a different prover, the run is abandoned at the next checkpoint — between two linked FRI proofs, between recursion steps, or between the merge, final-proof and SNARKification stages. The path is served by a multiplexer, not by a plain sequencer; against a plain sequencer the check fails and the prover keeps proving. Give each prover a unique `--prover-name` — the default `unknown_prover` makes two provers look like one owner, and neither will ever cancel.
+Specify `--cancel-request-timeout-secs` to bound one such ownership check (default 5s). It is separate from `--request-timeout-secs` so that the two can be sized on their own: a status listing is slower than a submission, and a submit timeout raised for a slow upload must not stretch the ownership check with it. The watchdog sleeps for the interval and then runs the check, so a check that hangs delays the next one by up to this timeout.
 
 **This one is only needed if you want to manually upload.**
 

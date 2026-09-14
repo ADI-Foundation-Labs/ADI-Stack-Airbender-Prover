@@ -3,7 +3,8 @@ use clap::{Parser, Subcommand};
 use tracing_subscriber::{fmt, EnvFilter};
 use zkos_wrapper::SnarkWrapperProof;
 use zksync_sequencer_proof_client::{
-    FriJobInputs, L2BatchNumber, ProofClient, SequencerEndpoint, SequencerProofClient,
+    ClientTimeouts, FriJobInputs, L2BatchNumber, ProofClient, SequencerEndpoint,
+    SequencerProofClient,
 };
 
 #[derive(Parser)]
@@ -48,7 +49,7 @@ impl Cli {
                 .clone()
                 .expect("called sequencer_client() before init()"),
             "cli_client".to_string(),
-            None,
+            ClientTimeouts::default(),
             vec![],
         )
     }

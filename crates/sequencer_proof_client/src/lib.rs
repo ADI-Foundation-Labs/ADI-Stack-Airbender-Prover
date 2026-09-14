@@ -5,11 +5,13 @@ pub mod cancel;
 pub mod ownership;
 pub mod sequencer_endpoint;
 pub mod sequencer_proof_client;
+pub mod timeouts;
 
 pub use cancel::{with_watchdog, CancelFlag, Watched};
 pub use ownership::{FriJobOwnership, SnarkRunOwnership};
 pub use sequencer_endpoint::SequencerEndpoint;
 pub use sequencer_proof_client::SequencerProofClient;
+pub use timeouts::ClientTimeouts;
 
 use crate::metrics::SEQUENCER_CLIENT_METRICS;
 use async_trait::async_trait;
