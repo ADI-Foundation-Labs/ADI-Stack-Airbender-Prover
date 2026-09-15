@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use reqwest::StatusCode;
+use reqwest::{header::HeaderMap, StatusCode};
 use url::Url;
 
 /// How long a plain-sequencer answer stands before a client asks again.
@@ -14,6 +14,9 @@ use url::Url;
 /// Only the negative expires. Reading a mux wrongly costs unwanted polls; reading a plain
 /// sequencer wrongly costs cancellation altogether.
 pub(crate) const REPROBE_INTERVAL: Duration = Duration::from_secs(60);
+
+/// The header mux stamps on every answer it gives, from mux v0.3.0 on.
+pub(crate) const VERSION_HEADER: &str = "mux-version";
 
 /// Which backend answers a sequencer URL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +32,14 @@ impl Backend {
     #[must_use]
     pub fn supports_cancellation(self) -> bool {
         matches!(self, Self::Mux)
+    }
+
+    /// Reads the backend an answer announces, or `None` when it announces nothing.
+    ///
+    /// Only the positive is sound. A missing [`VERSION_HEADER`] is either a plain sequencer
+    /// or a mux pod older than v0.3.0, and the two are told apart by the probe below.
+    pub(crate) fn announced(headers: &HeaderMap) -> Option<Self> {
+        headers.contains_key(VERSION_HEADER).then_some(Self::Mux)
     }
 
     /// Returns what this backend means for the cancel path, as the startup log says it.
@@ -74,6 +85,16 @@ impl Latch {
         })
     }
 
+    /// Records [`Backend::Mux`] when `headers` announce it, and leaves the latch alone
+    /// otherwise, because a missing [`VERSION_HEADER`] proves nothing.
+    pub(crate) fn observe(&self, headers: &HeaderMap) {
+        let Some(backend) = Backend::announced(headers) else {
+            return;
+        };
+
+        self.set(backend);
+    }
+
     /// Records a probe answer.
     pub(crate) fn set(&self, backend: Backend) {
         let Ok(mut held) = self.0.lock() else {
@@ -94,11 +115,12 @@ impl Latch {
 
 /// Asks the SNARK status route at `url` which backend serves it.
 ///
-/// Only a `404` is a sound negative, because that route exists on a mux alone.
-/// Every other answer, and every failure, reads as [`Backend::Mux`], so a URL that will not
-/// answer at boot never quietly loses cancellation.
+/// [`VERSION_HEADER`] settles the answer when it is there. Without it, only a `404` is a
+/// sound negative, because that route exists on a mux alone. Every other answer, and every
+/// failure, reads as [`Backend::Mux`], so a URL that will not answer at boot never quietly
+/// loses cancellation.
 pub(crate) async fn probe(http: &reqwest::Client, url: &Url, timeout: Duration) -> Backend {
-    let answered_404 = http
+    let Ok(response) = http
         .get(url.clone())
         .timeout(timeout)
         .send()
@@ -106,9 +128,15 @@ pub(crate) async fn probe(http: &reqwest::Client, url: &Url, timeout: Duration) 
         .inspect_err(|err| {
             tracing::warn!("Backend probe of {url} failed, reading it as a mux: {err}");
         })
-        .is_ok_and(|response| response.status() == StatusCode::NOT_FOUND);
+    else {
+        return Backend::Mux;
+    };
 
-    if answered_404 {
+    if let Some(announced) = Backend::announced(response.headers()) {
+        return announced;
+    }
+
+    if response.status() == StatusCode::NOT_FOUND {
         return Backend::Sequencer;
     }
 
@@ -118,6 +146,54 @@ pub(crate) async fn probe(http: &reqwest::Client, url: &Url, timeout: Duration) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Builds a header map carrying `mux-version`, as mux v0.3.0 and later answer.
+    fn announced_headers() -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(VERSION_HEADER, "0.3.0 (abc1234)".parse().expect("valid"));
+        headers
+    }
+
+    #[test]
+    fn the_version_header_names_a_mux() {
+        assert_eq!(Backend::announced(&announced_headers()), Some(Backend::Mux));
+    }
+
+    /// A mux pod older than v0.3.0 also answers without the header, so absence proves nothing.
+    #[test]
+    fn a_missing_version_header_names_nothing() {
+        assert_eq!(Backend::announced(&HeaderMap::new()), None);
+    }
+
+    #[test]
+    fn an_announced_mux_turns_cancellation_on() {
+        let latch = Latch::default();
+        latch.observe(&announced_headers());
+
+        assert!(latch.supports_cancellation());
+    }
+
+    /// The header is the one signal that outranks a held negative, because it is certain.
+    #[test]
+    fn an_announced_mux_overrides_a_held_sequencer_answer() {
+        let latch = Latch::default();
+        latch.set(Backend::Sequencer);
+        latch.observe(&announced_headers());
+
+        assert!(latch.supports_cancellation());
+    }
+
+    /// An unannounced answer must not undo a probe, nor stand in for one.
+    #[test]
+    fn an_unannounced_answer_leaves_the_latch_alone() {
+        let latch = Latch::default();
+        latch.observe(&HeaderMap::new());
+        assert!(!latch.supports_cancellation());
+
+        latch.set(Backend::Mux);
+        latch.observe(&HeaderMap::new());
+        assert!(latch.supports_cancellation());
+    }
 
     #[test]
     fn an_unprobed_latch_neither_cancels_nor_reprobes() {
