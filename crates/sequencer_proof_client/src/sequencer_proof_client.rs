@@ -175,6 +175,17 @@ impl SequencerProofClient {
         Ok(STANDARD.encode(byte_serialized_proof))
     }
 
+    /// Sends `request`, noting the backend its answer announces.
+    ///
+    /// Every call the prover already makes carries the announcement, so a mux names itself
+    /// on the first real request and the probe above is only the fallback.
+    async fn send(&self, request: reqwest::RequestBuilder) -> reqwest::Result<reqwest::Response> {
+        let response = request.send().await?;
+        self.backend.observe(response.headers());
+
+        Ok(response)
+    }
+
     /// Constructs a prover API endpoint URL.
     fn build_url(&self, path: &str) -> anyhow::Result<Url> {
         let url = self
@@ -238,9 +249,7 @@ impl ProofClient for SequencerProofClient {
         let started_at = Instant::now();
 
         let resp = self
-            .client
-            .post(url.clone())
-            .send()
+            .send(self.client.post(url.clone()))
             .await
             .context("Pick Fri Job request failed")?;
 
@@ -283,10 +292,7 @@ impl ProofClient for SequencerProofClient {
         let started_at = Instant::now();
 
         let resp = self
-            .client
-            .post(url.clone())
-            .json(&payload)
-            .send()
+            .send(self.client.post(url.clone()).json(&payload))
             .await
             .context("Submit Fri Proof request failed")?;
 
@@ -310,9 +316,7 @@ impl ProofClient for SequencerProofClient {
         let started_at = Instant::now();
 
         let resp = self
-            .client
-            .post(url.clone())
-            .send()
+            .send(self.client.post(url.clone()))
             .await
             .context("Pick Snark Job request failed")?;
 
@@ -339,10 +343,11 @@ impl ProofClient for SequencerProofClient {
         let started_at = Instant::now();
 
         let resp = self
-            .client
-            .get(url.clone())
-            .timeout(self.timeouts.cancel_request)
-            .send()
+            .send(
+                self.client
+                    .get(url.clone())
+                    .timeout(self.timeouts.cancel_request),
+            )
             .await
             .context("Fri Job Status request failed")?;
 
@@ -374,10 +379,11 @@ impl ProofClient for SequencerProofClient {
         let started_at = Instant::now();
 
         let resp = self
-            .client
-            .get(url.clone())
-            .timeout(self.timeouts.cancel_request)
-            .send()
+            .send(
+                self.client
+                    .get(url.clone())
+                    .timeout(self.timeouts.cancel_request),
+            )
             .await
             .context("Snark Run Status request failed")?;
 
@@ -425,10 +431,7 @@ impl ProofClient for SequencerProofClient {
             vk_hash,
             proof: serialized_proof,
         };
-        self.client
-            .post(url.clone())
-            .json(&payload)
-            .send()
+        self.send(self.client.post(url.clone()).json(&payload))
             .await
             .context("Submit Snark Proof request failed")?
             .error_for_status()
@@ -445,9 +448,7 @@ impl PeekableProofClient for SequencerProofClient {
     async fn peek_fri_job(&self, batch_number: u32) -> anyhow::Result<Option<(u32, Vec<u8>)>> {
         let url = self.build_url(&format!("FRI/{batch_number}/peek"))?;
         let resp = self
-            .client
-            .get(url.clone())
-            .send()
+            .send(self.client.get(url.clone()))
             .await
             .context("Peek Fri Job request failed")?;
 
@@ -473,9 +474,7 @@ impl PeekableProofClient for SequencerProofClient {
     ) -> anyhow::Result<Option<SnarkProofInputs>> {
         let url = self.build_url(&format!("SNARK/{from_batch_number}/{to_batch_number}/peek"))?;
         let resp = self
-            .client
-            .get(url.clone())
-            .send()
+            .send(self.client.get(url.clone()))
             .await
             .context("Peek Snark Job request failed")?;
 
@@ -501,9 +500,7 @@ impl PeekableProofClient for SequencerProofClient {
     ) -> anyhow::Result<Option<FailedFriProofPayload>> {
         let url = self.build_url(&format!("FRI/{batch_number}/failed"))?;
         let resp = self
-            .client
-            .get(url.clone())
-            .send()
+            .send(self.client.get(url.clone()))
             .await
             .context("Get Failed Fri Proof request failed")?;
 
@@ -754,10 +751,21 @@ mod tests {
     impl FakeBackend {
         /// Starts a server answering `status_line`, e.g. `"404 Not Found"`.
         fn answering(status_line: &str) -> Self {
+            Self::serving(status_line, "")
+        }
+
+        /// Starts a server answering `status_line` and naming itself a mux, as v0.3.0 does.
+        fn announcing(status_line: &str) -> Self {
+            Self::serving(status_line, "mux-version: 0.3.0 (abc1234)\r\n")
+        }
+
+        /// Starts a server answering `status_line` with `extra_headers` appended.
+        fn serving(status_line: &str, extra_headers: &str) -> Self {
             let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind");
             let address = listener.local_addr().expect("bound socket has an address");
-            let response =
-                format!("HTTP/1.1 {status_line}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n");
+            let response = format!(
+                "HTTP/1.1 {status_line}\r\n{extra_headers}content-length: 0\r\nconnection: close\r\n\r\n"
+            );
 
             let requests = Arc::new(Mutex::new(Vec::new()));
             let recorder = Arc::clone(&requests);
@@ -796,10 +804,11 @@ mod tests {
         }
     }
 
-    /// Builds a client against `url` and probes it, as `new_clients` does at startup.
-    async fn probed_client(url: &Url) -> SequencerProofClient {
+    /// Builds a client against `url` without probing it.
+    fn unprobed_client(url: &Url) -> SequencerProofClient {
         let endpoint = SequencerEndpoint::parse(url.as_str()).expect("valid url");
-        let client = SequencerProofClient::new(
+
+        SequencerProofClient::new(
             endpoint,
             "prover-a".to_string(),
             ClientTimeouts {
@@ -808,7 +817,12 @@ mod tests {
             },
             vec![],
         )
-        .expect("failed to create client");
+        .expect("failed to create client")
+    }
+
+    /// Builds a client against `url` and probes it, as `new_clients` does at startup.
+    async fn probed_client(url: &Url) -> SequencerProofClient {
+        let client = unprobed_client(url);
 
         client.detect_backend().await.expect("failed to probe");
         client
@@ -842,6 +856,32 @@ mod tests {
         let backend = FakeBackend::answering("404 Not Found");
 
         assert!(!probed_client(&backend.url).await.supports_cancellation());
+    }
+
+    /// The header is certain where the route table is a guess, so it outranks the status.
+    /// An ingress that 404s a live mux mid-rollout must not cost cancellation.
+    #[tokio::test]
+    async fn an_announced_mux_outranks_a_404() {
+        let backend = FakeBackend::announcing("404 Not Found");
+
+        assert!(probed_client(&backend.url).await.supports_cancellation());
+    }
+
+    /// Every call carries the announcement, so a mux names itself without a probe at all.
+    #[tokio::test]
+    async fn a_pick_against_an_announced_mux_turns_cancellation_on() {
+        let backend = FakeBackend::announcing("204 No Content");
+        let client = unprobed_client(&backend.url);
+        assert!(!client.supports_cancellation());
+
+        client.pick_fri_job().await.expect("204 is an empty pick");
+
+        assert!(client.supports_cancellation());
+        assert_eq!(
+            backend.requests(),
+            vec!["POST /prover-jobs/v1/FRI/pick?id=prover-a HTTP/1.1".to_string()],
+            "the pick alone must settle the backend, with no probe beside it"
+        );
     }
 
     /// mux answers 503 when its store is unreadable, which says nothing about the backend.
